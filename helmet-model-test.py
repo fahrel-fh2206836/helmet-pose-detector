@@ -1,5 +1,5 @@
 import torch
-from torchvision.models import efficientnet_b3
+from torchvision.models import efficientnet_b3, EfficientNet_B3_Weights
 import torch.nn as nn
 import torchvision.transforms as transforms
 from PIL import Image

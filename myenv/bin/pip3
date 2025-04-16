@@ -1,4 +1,4 @@
-#!/Users/marcuswein/Documents/GitHub/helmet-pose-detector/myenv/bin/python
+#!/Users/marcuswein/Documents/GitHub/helmet-pose-detector/myenv/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys
