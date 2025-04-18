@@ -5,6 +5,29 @@ import torchvision.transforms as transforms
 from PIL import Image
 import cv2
 import numpy as np
+import time
+import tkinter as tk
+from tkinter import messagebox
+import threading
+
+# --- Non-blocking alert function ---
+def show_alert_non_blocking():
+    def run_alert():
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo("Warning!", "User has been looking for more than 5 seconds!")
+        root.destroy()
+    threading.Thread(target=run_alert).start()
+
+# --- Timer Variables ---
+looking_start_time = None
+last_alert_time = 0
+LOOKING_THRESHOLD = 5   # seconds to first alert  
+ALERT_INTERVAL = 15    # seconds between alerts if still looking
+
+# --- Speed Functionality ---
+SPEED_THRESHOLD_KMPH = 25
+current_speed_kmph = 26  # Simulated Speed - Change this dynamically for testing.
 
 # --- SETUP ---
 classes = ["looking", "not_looking"]
@@ -25,7 +48,7 @@ transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                          std=[0.229, 0.224, 0.225])
-])
+])         
 
 # --- OPENCV VIDEO LOOP ---
 cap = cv2.VideoCapture(0)
@@ -47,6 +70,21 @@ while cap.isOpened():
         conf, predicted = torch.max(probs, 1)
         label = classes[predicted.item()]
         confidence = conf.item()
+
+    current_time = time.time()
+
+    # --- Alert logic ---
+    if label == "looking":
+        if looking_start_time is None:
+            looking_start_time = current_time
+        elif (current_time - looking_start_time >= LOOKING_THRESHOLD and 
+            current_time - last_alert_time >= ALERT_INTERVAL and 
+            current_speed_kmph >= SPEED_THRESHOLD_KMPH):
+            show_alert_non_blocking()
+            last_alert_time = current_time
+    else:
+        looking_start_time = None
+        last_alert_time = 0
 
     # --- TEXT DISPLAY CONFIG ---
     color = (0, 255, 0) if label == "not_looking" else (0, 0, 255)
