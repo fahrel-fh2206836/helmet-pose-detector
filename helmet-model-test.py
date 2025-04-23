@@ -4,10 +4,8 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from PIL import Image
 import cv2
-import numpy as np
 import time
 import tkinter as tk
-from tkinter import messagebox
 import threading
 
 # --- Non-blocking alert function ---
@@ -15,18 +13,30 @@ def show_alert_non_blocking():
     def run_alert():
         root = tk.Tk()
         root.withdraw()
-        messagebox.showinfo("Warning!", "User has been looking for more than 5 seconds!")
-        root.destroy()
+        popup = tk.Toplevel()
+        popup.title("⚠️ ALERT!")
+        tk.Label(popup, text="⚠️ LOOKING at PHONE DETECTED!", font=("Arial", 18), fg="red").pack(padx=20, pady=20)
+        popup.after(3000, popup.destroy)
+        popup.mainloop()
     threading.Thread(target=run_alert).start()
 
 # --- Timer Variables ---
 looking_start_time = None
 last_alert_time = 0
-LOOKING_THRESHOLD = 5   # seconds to first alert  
-ALERT_INTERVAL = 15    # seconds between alerts if still looking
+looking_threshold = None   # seconds to first alert  
+ALERT_INTERVAL = 10   # seconds between alerts if still looking
+
+def get_alert_threshold(speed_kmh):
+    if speed_kmh <= 10:
+        return None  
+    elif speed_kmh <= 25:
+        return 6
+    elif speed_kmh <= 50:
+        return 4
+    else:
+        return 2
 
 # --- Speed Functionality ---
-SPEED_THRESHOLD_KMPH = 25
 current_speed_kmph = 26  # Simulated Speed - Change this dynamically for testing.
 
 # --- SETUP ---
@@ -73,13 +83,13 @@ while cap.isOpened():
 
     current_time = time.time()
 
+    looking_threshold = get_alert_threshold(current_speed_kmph)
     # --- Alert logic ---
-    if label == "looking":
+    if label == "looking" and looking_threshold is not None:
         if looking_start_time is None:
             looking_start_time = current_time
-        elif (current_time - looking_start_time >= LOOKING_THRESHOLD and 
-            current_time - last_alert_time >= ALERT_INTERVAL and 
-            current_speed_kmph >= SPEED_THRESHOLD_KMPH):
+        elif (current_time - looking_start_time >= looking_threshold and 
+            current_time - last_alert_time >= ALERT_INTERVAL):
             show_alert_non_blocking()
             last_alert_time = current_time
     else:
