@@ -26,7 +26,7 @@ last_alert_time = 0
 looking_threshold = None   # seconds to first alert  
 ALERT_INTERVAL = 10   # seconds between alerts if still looking
 
-def get_alert_threshold(speed_kmh):
+def get_looking_threshold(speed_kmh):
     if speed_kmh <= 10:
         return None  
     elif speed_kmh <= 25:
@@ -37,7 +37,7 @@ def get_alert_threshold(speed_kmh):
         return 2
 
 # --- Speed Functionality ---
-current_speed_kmph = 26  # Simulated Speed - Change this dynamically for testing.
+current_speed_kmph = 9  # Simulated Speed - Change this dynamically for testing.
 
 # --- SETUP ---
 classes = ["looking", "not_looking"]
@@ -47,7 +47,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else
 # --- LOAD MODEL ---
 model = efficientnet_b3(pretrained=False)
 model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
-model.load_state_dict(torch.load("efficientnet_b3_final.pth", map_location=device))
+model.load_state_dict(torch.load("helmet-pose-detector/efficientnet_b3_final.pth", map_location=device))
 model.to(device)
 model.eval()
 
@@ -83,8 +83,9 @@ while cap.isOpened():
 
     current_time = time.time()
 
-    looking_threshold = get_alert_threshold(current_speed_kmph)
+    
     # --- Alert logic ---
+    looking_threshold = get_looking_threshold(current_speed_kmph)
     if label == "looking" and looking_threshold is not None:
         if looking_start_time is None:
             looking_start_time = current_time
@@ -95,6 +96,7 @@ while cap.isOpened():
     else:
         looking_start_time = None
         last_alert_time = 0
+
 
     # --- TEXT DISPLAY CONFIG ---
     color = (0, 255, 0) if label == "not_looking" else (0, 0, 255)
