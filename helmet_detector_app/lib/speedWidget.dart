@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator';
+import 'package:geolocator/geolocator.dart';
 
 class SpeedWidget extends StatefulWidget {
   const SpeedWidget({super.key});
