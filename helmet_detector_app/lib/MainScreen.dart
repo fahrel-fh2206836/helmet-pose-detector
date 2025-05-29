@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:helmet_detector_app/SpeedWidget.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -21,10 +22,7 @@ class _MainScreenState extends State<MainScreen> {
               padding: EdgeInsets.symmetric(vertical: 16.0),
               child: Text(
                 'DriveSafe',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
             ),
 
@@ -33,9 +31,10 @@ class _MainScreenState extends State<MainScreen> {
               child: Text(
                 'Stay Focused, Drive Safe',
                 style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepOrange),
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepOrange,
+                ),
               ),
             ),
 
@@ -60,9 +59,7 @@ class _MainScreenState extends State<MainScreen> {
                 border: Border.all(color: Colors.green, width: 2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Center(
-                child: Text('Camera Display'),
-              ),
+              child: Center(child: Text('Camera Display')),
             ),
 
             const SizedBox(height: 24),
@@ -73,8 +70,10 @@ class _MainScreenState extends State<MainScreen> {
                 backgroundColor: Color(0xFF12EB66),
                 foregroundColor: Colors.black,
                 minimumSize: Size(250, 60),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
@@ -92,17 +91,7 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 16),
 
             // Speed indicator
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.motorcycle, color: Colors.green),
-                SizedBox(width: 8),
-                Text(
-                  'Current Speed: 0 KM/h', // Dummy
-                  style: TextStyle(fontSize: 16),
-                ),
-              ],
-            ),
+            const SpeedWidget(),
           ],
         ),
       ),
@@ -111,18 +100,9 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.location_on),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: '',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.location_on), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
         ],
         onTap: (index) {
           // handle navigation
