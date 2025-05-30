@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:helmet_detector_app/SpeedWidget.dart';
+import 'package:helmet_detector_app/widgets/camera_widget.dart';
+import 'package:helmet_detector_app/widgets/speed_widget.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -59,7 +60,7 @@ class _MainScreenState extends State<MainScreen> {
                 border: Border.all(color: Colors.green, width: 2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Center(child: Text('Camera Display')),
+              child: Center(child: CameraWidget()),
             ),
 
             const SizedBox(height: 24),

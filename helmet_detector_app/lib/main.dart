@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:helmet_detector_app/MainScreen.dart';
+import 'package:helmet_detector_app/main_screen.dart';
 
 void main() {
   runApp(const MyApp());
