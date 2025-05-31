@@ -10,6 +10,7 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  bool _isActivated = false; // Initial button state
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -66,26 +67,40 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 24),
 
             // Activation Button
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF12EB66),
-                foregroundColor: Colors.black,
-                minimumSize: Size(250, 60),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
+            SizedBox(
+              width: 300,
+              height: 50,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isActivated
+                      ? const Color(0xFF12EB66)
+                      : Colors.grey,
+                  foregroundColor: Colors.black,
+                  // minimumSize: Size(300, 60),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
+                onPressed: () {
+                  // add logic
+                  setState(() {
+                    _isActivated = !_isActivated;
+                  });
+                },
+                icon: const Icon(Icons.power_settings_new),
+                label: Expanded(
+                  child: Text(
+                    _isActivated
+                        ? 'Activated Head Tracking'
+                        : 'Activate AI & Camera',
+                    style: TextStyle(fontSize: 18),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              ),
-              onPressed: () {
-                // add logic
-              },
-              icon: const Icon(Icons.power_settings_new),
-              label: const Text(
-                'Activate AI & Camera',
-                style: TextStyle(fontSize: 18),
               ),
             ),
 
