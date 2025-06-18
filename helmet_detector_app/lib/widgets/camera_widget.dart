@@ -3,7 +3,8 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class CameraWidget extends StatefulWidget {
-  const CameraWidget({super.key});
+  final bool isActivated;
+  const CameraWidget({super.key, required this.isActivated});
 
   @override
   State<CameraWidget> createState() => _CameraWidgetState();
@@ -26,25 +27,50 @@ class _CameraWidgetState extends State<CameraWidget>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // _controller?.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
-  // Called when app is resumed (after coming back from settings)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkAndInitialize(); // re-check permission
+    if (!widget.isActivated) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _controller?.dispose();
+      _controller = null;
+      _initializeControllerFuture = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _checkAndInitialize(); // Re-initialize if still activated
+    }
+  }
+
+  @override
+  void didUpdateWidget(CameraWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Activate camera if parent just activated it
+    if (widget.isActivated && !oldWidget.isActivated) {
+      _checkAndInitialize();
+    }
+
+    // Clean up if parent just deactivated it
+    if (!widget.isActivated && oldWidget.isActivated) {
+      _controller?.dispose();
+      _controller = null;
+      _initializeControllerFuture = null;
     }
   }
 
   Future<void> _checkAndInitialize() async {
-    var status = await Permission.camera.status;
+    if (!widget.isActivated) return;
+
+    final status = await Permission.camera.status;
 
     if (status.isGranted) {
       await _initializeCamera();
     } else if (status.isDenied) {
-      var result = await Permission.camera.request();
+      final result = await Permission.camera.request();
       if (result.isGranted) {
         await _initializeCamera();
       } else if (result.isPermanentlyDenied) {
@@ -60,23 +86,39 @@ class _CameraWidgetState extends State<CameraWidget>
   }
 
   Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    final frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-    );
+    try {
+      final cameras = await availableCameras();
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+      );
 
-    _controller?.dispose(); // dispose old controller if any
-    _controller = CameraController(frontCamera, ResolutionPreset.medium);
-    _initializeControllerFuture = _controller!.initialize();
+      _controller?.dispose(); // dispose old controller
+      _controller = CameraController(frontCamera, ResolutionPreset.medium);
+      _initializeControllerFuture = _controller!.initialize();
 
-    setState(() {
-      _permissionGranted = true;
-      _permissionPermanentlyDenied = false;
-    });
+      setState(() {
+        _permissionGranted = true;
+        _permissionPermanentlyDenied = false;
+      });
+    } catch (e) {
+      debugPrint('Error initializing camera: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.isActivated) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(8.0),
+          child: Text(
+            'Please press the activate button to activate the AI and Camera',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     if (_permissionPermanentlyDenied) {
       return Center(
         child: Column(
@@ -96,14 +138,12 @@ class _CameraWidgetState extends State<CameraWidget>
       );
     }
 
-    if (!_permissionGranted || _initializeControllerFuture == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     return FutureBuilder<void>(
       future: _initializeControllerFuture,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            _controller != null &&
+            _controller!.value.isInitialized) {
           return AspectRatio(
             aspectRatio: _controller!.value.aspectRatio,
             child: CameraPreview(_controller!),

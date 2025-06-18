@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:helmet_detector_app/widgets/camera_widget.dart';
 import 'package:helmet_detector_app/widgets/speed_widget.dart';
@@ -11,6 +13,30 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   bool _isActivated = false; // Initial button state
+  Timer? _activationTimer;
+  int _secondsElapsed = 0;
+
+  void _startTimer() {
+    _secondsElapsed = 0;
+    _activationTimer?.cancel(); // in case it's already running
+    _activationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _secondsElapsed++;
+      });
+
+      // Example: Trigger something after 10 seconds
+      if (_secondsElapsed == 10) {
+        debugPrint("10 seconds elapsed since activation.");
+        // TODO: Add your alert/notification logic here
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _activationTimer?.cancel();
+    _secondsElapsed = 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -61,7 +87,7 @@ class _MainScreenState extends State<MainScreen> {
                 border: Border.all(color: Colors.green, width: 2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Center(child: CameraWidget()),
+              child: Center(child: CameraWidget(isActivated: _isActivated)),
             ),
 
             const SizedBox(height: 24),
@@ -90,8 +116,16 @@ class _MainScreenState extends State<MainScreen> {
                   setState(() {
                     _isActivated = !_isActivated;
                   });
+
+                  if (_isActivated) {
+                    _startTimer();
+                  } else {
+                    _stopTimer();
+                  }
                 },
-                icon: const Icon(Icons.power_settings_new),
+                icon: Icon(
+                  !_isActivated ? Icons.power_settings_new : Icons.pause,
+                ),
                 label: Expanded(
                   child: Text(
                     _isActivated
@@ -104,7 +138,23 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 30),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.timer, color: Colors.green),
+                SizedBox(width: 20),
+                Text(
+                  _isActivated
+                      ? 'Tracking for $_secondsElapsed seconds'
+                      : 'Currently Not Tracking',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 30),
 
             // Speed indicator
             const SpeedWidget(),
@@ -117,8 +167,7 @@ class _MainScreenState extends State<MainScreen> {
         currentIndex: 0,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.location_on), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
+          BottomNavigationBarItem(icon: Icon(Icons.info), label: ''),
         ],
         onTap: (index) {
           // handle navigation

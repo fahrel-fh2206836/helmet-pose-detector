@@ -58,7 +58,7 @@ class _SpeedWidgetState extends State<SpeedWidget> {
         const Icon(Icons.motorcycle, color: Colors.green),
         const SizedBox(width: 8),
         Text(
-          'Current Speed: ${_currentSpeed.toStringAsFixed(2)} KM/h',
+          'Current Speed: ${_currentSpeed.toStringAsFixed(2)} km/h',
           style: const TextStyle(fontSize: 16),
         ),
       ],
