@@ -1,11 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:camera/camera.dart';
-import 'package:helmet_detector_app/utils/image_utils.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
-// import 'package:tflite_flutter_helper/tflite_flutter_helper.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -20,27 +16,10 @@ class _MainScreenState extends State<MainScreen> {
   int _secondsElapsed = 0;
   double _currentSpeed = 0.0;
 
-  // AI and Camera
-  CameraController? _cameraController;
-  Interpreter? _helmetInterpreter;
-  Interpreter? _classifierInterpreter;
-  bool _helmetDetected = false;
-  bool _isLookingAtPhone = false;
-
   @override
   void initState() {
     super.initState();
     _startTracking();
-    _loadModels();
-  }
-
-  Future<void> _loadModels() async {
-    _helmetInterpreter = await Interpreter.fromAsset(
-      'assets/best_float32.tflite',
-    );
-    _classifierInterpreter = await Interpreter.fromAsset(
-      'assets/classifier_model.tflite',
-    );
   }
 
   Future<void> _startTracking() async {
@@ -80,36 +59,6 @@ class _MainScreenState extends State<MainScreen> {
     _activationTimer?.cancel();
     _secondsElapsed = 0;
   }
-
-  // Future<void> _runPipeline(CameraImage image) async {
-  //   final inputImage = await convertCameraImage(image);
-
-  //   final inputTensor = inputImage.tensorBuffer.buffer;
-  //   final outputBuffer = TensorBuffer.createFixedSize([
-  //     1,
-  //     2,
-  //   ], TfLiteType.float32);
-  //   _helmetInterpreter!.run(inputTensor, outputBuffer.buffer);
-  //   final helmetProb = outputBuffer.getDoubleList()[0];
-
-  //   setState(() {
-  //     _helmetDetected = helmetProb > 0.5;
-  //   });
-
-  //   if (_helmetDetected) {
-  //     final output2 = TensorBuffer.createFixedSize([1, 2], TfLiteType.float32);
-  //     _classifierInterpreter!.run(inputTensor, output2.buffer);
-  //     final phoneProb = output2.getDoubleList()[0];
-
-  //     setState(() {
-  //       _isLookingAtPhone = phoneProb > 0.5;
-  //     });
-  //   } else {
-  //     setState(() {
-  //       _isLookingAtPhone = false;
-  //     });
-  //   }
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -170,12 +119,8 @@ class _MainScreenState extends State<MainScreen> {
                   });
                   if (_isActivated) {
                     _startTimer();
-                    // _cameraController?.startImageStream(
-                    //   (image) => _runPipeline(image),
-                    // );
                   } else {
                     _stopTimer();
-                    _cameraController?.stopImageStream();
                   }
                 },
                 icon: Icon(
