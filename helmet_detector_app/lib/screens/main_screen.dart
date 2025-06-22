@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:helmet_detector_app/widgets/camera_widget.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -94,6 +94,17 @@ class _MainScreenState extends State<MainScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16),
               ),
+            ),
+            const SizedBox(height: 24),
+            // Camera container
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green, width: 2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(child: CameraWidget(isActivated: _isActivated)),
             ),
             const SizedBox(height: 24),
             SizedBox(
