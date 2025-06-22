@@ -129,7 +129,7 @@ class _MainScreenState extends State<MainScreen> {
                 label: Expanded(
                   child: Text(
                     _isActivated
-                        ? 'Activated Head Tracking'
+                        ? 'Deactive AI & Camera'
                         : 'Activate AI & Camera',
                     style: TextStyle(fontSize: 18),
                     textAlign: TextAlign.center,
