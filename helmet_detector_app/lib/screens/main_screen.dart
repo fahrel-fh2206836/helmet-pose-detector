@@ -1,8 +1,11 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:helmet_detector_app/widgets/camera_widget.dart';
-import 'package:helmet_detector_app/widgets/speed_widget.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/utils/image_utils.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+// import 'package:tflite_flutter_helper/tflite_flutter_helper.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -12,23 +15,64 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  bool _isActivated = false; // Initial button state
+  bool _isActivated = false;
   Timer? _activationTimer;
   int _secondsElapsed = 0;
+  double _currentSpeed = 0.0;
+
+  // AI and Camera
+  CameraController? _cameraController;
+  Interpreter? _helmetInterpreter;
+  Interpreter? _classifierInterpreter;
+  bool _helmetDetected = false;
+  bool _isLookingAtPhone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTracking();
+    _loadModels();
+  }
+
+  Future<void> _loadModels() async {
+    _helmetInterpreter = await Interpreter.fromAsset(
+      'assets/best_float32.tflite',
+    );
+    _classifierInterpreter = await Interpreter.fromAsset(
+      'assets/classifier_model.tflite',
+    );
+  }
+
+  Future<void> _startTracking() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+    }
+    if (permission == LocationPermission.deniedForever) return;
+
+    Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((Position position) {
+      setState(() {
+        _currentSpeed = (position.speed) * 3.6;
+      });
+    });
+  }
 
   void _startTimer() {
     _secondsElapsed = 0;
-    _activationTimer?.cancel(); // in case it's already running
+    _activationTimer?.cancel();
     _activationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _secondsElapsed++;
       });
-
-      // Example: Trigger something after 10 seconds
-      if (_secondsElapsed == 10) {
-        debugPrint("10 seconds elapsed since activation.");
-        // TODO: Add your alert/notification logic here
-      }
     });
   }
 
@@ -36,6 +80,36 @@ class _MainScreenState extends State<MainScreen> {
     _activationTimer?.cancel();
     _secondsElapsed = 0;
   }
+
+  // Future<void> _runPipeline(CameraImage image) async {
+  //   final inputImage = await convertCameraImage(image);
+
+  //   final inputTensor = inputImage.tensorBuffer.buffer;
+  //   final outputBuffer = TensorBuffer.createFixedSize([
+  //     1,
+  //     2,
+  //   ], TfLiteType.float32);
+  //   _helmetInterpreter!.run(inputTensor, outputBuffer.buffer);
+  //   final helmetProb = outputBuffer.getDoubleList()[0];
+
+  //   setState(() {
+  //     _helmetDetected = helmetProb > 0.5;
+  //   });
+
+  //   if (_helmetDetected) {
+  //     final output2 = TensorBuffer.createFixedSize([1, 2], TfLiteType.float32);
+  //     _classifierInterpreter!.run(inputTensor, output2.buffer);
+  //     final phoneProb = output2.getDoubleList()[0];
+
+  //     setState(() {
+  //       _isLookingAtPhone = phoneProb > 0.5;
+  //     });
+  //   } else {
+  //     setState(() {
+  //       _isLookingAtPhone = false;
+  //     });
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +119,6 @@ class _MainScreenState extends State<MainScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            // Headings
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16.0),
               child: Text(
@@ -53,7 +126,6 @@ class _MainScreenState extends State<MainScreen> {
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
             ),
-
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
@@ -65,34 +137,16 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 8),
-
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
-                'Press the button to monitor your driving attentiveness and receive alerts for prolonged phone usage.',
+                'Please allow all the permissions that has been asked in order for the app to function properly',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // Camera container
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16.0),
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green, width: 2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(child: CameraWidget(isActivated: _isActivated)),
-            ),
-
             const SizedBox(height: 24),
-
-            // Activation Button
             SizedBox(
               width: 300,
               height: 50,
@@ -102,7 +156,6 @@ class _MainScreenState extends State<MainScreen> {
                       ? const Color(0xFF12EB66)
                       : Colors.grey,
                   foregroundColor: Colors.black,
-                  // minimumSize: Size(300, 60),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
                     vertical: 12,
@@ -112,15 +165,17 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                 ),
                 onPressed: () {
-                  // add logic
                   setState(() {
                     _isActivated = !_isActivated;
                   });
-
                   if (_isActivated) {
                     _startTimer();
+                    // _cameraController?.startImageStream(
+                    //   (image) => _runPipeline(image),
+                    // );
                   } else {
                     _stopTimer();
+                    _cameraController?.stopImageStream();
                   }
                 },
                 icon: Icon(
@@ -137,9 +192,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 30),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -153,26 +206,33 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 30),
-
-            // Speed indicator
-            const SpeedWidget(),
+            _buildSpeedWidget(),
           ],
         ),
       ),
-
-      // Bottom Navbar
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
           BottomNavigationBarItem(icon: Icon(Icons.info), label: ''),
         ],
-        onTap: (index) {
-          // handle navigation
-        },
+        onTap: (index) {},
       ),
+    );
+  }
+
+  Widget _buildSpeedWidget() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.motorcycle, color: Colors.green),
+        const SizedBox(width: 8),
+        Text(
+          'Current Speed: ${_currentSpeed.toStringAsFixed(2)} km/h',
+          style: const TextStyle(fontSize: 16),
+        ),
+      ],
     );
   }
 }
