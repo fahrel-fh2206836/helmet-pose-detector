@@ -40,8 +40,8 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _startThresholdUpdater();
-    _startTracking();
     _loadModels();
+    _startTracking();
     _checkCameraPermissionAndInitialize();
   }
 
@@ -148,7 +148,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _loadModels() async {
-    _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
+    // _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
     // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
   }
 
@@ -357,11 +357,11 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 30),
               _buildSpeedWidget(),
               const SizedBox(height: 20),
-              Text(
-                "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 8),
+              // Text(
+              //   "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
+              //   style: const TextStyle(fontSize: 18),
+              // ),
+              // const SizedBox(height: 8),
               Text(
                 "Looking at Phone: ${isLooking ? "Yes" : "No"}",
                 style: const TextStyle(fontSize: 18),
