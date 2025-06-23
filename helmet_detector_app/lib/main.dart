@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:helmet_detector_app/screens/main_screen.dart';
+import 'package:helmet_detector_app/util/noti_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  NotiService().initNotification();
   runApp(const MyApp());
 }
 

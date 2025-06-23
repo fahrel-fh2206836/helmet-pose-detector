@@ -1,73 +1,46 @@
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
-import 'package:image/image.dart' as img;
 
 class CameraImageUtils {
-  /// Converts YUV420 CameraImage to RGB `img.Image`
-  static Future<img.Image> convertCameraImage(CameraImage cameraImage) async {
-    final int width = cameraImage.width;
-    final int height = cameraImage.height;
-    final img.Image image = img.Image(
-      width: width,
-      height: height,
-    ); // Create RGB image
+  static Future<Float32List> preprocessCameraImage(CameraImage image, {int targetSize = 416}) async {
+  final int width = image.width;
+  final int height = image.height;
+  final int uvRowStride = image.planes[1].bytesPerRow;
+  final int uvPixelStride = image.planes[1].bytesPerPixel!;
 
-    final Uint8List yPlane = cameraImage.planes[0].bytes;
-    final Uint8List uPlane = cameraImage.planes[1].bytes;
-    final Uint8List vPlane = cameraImage.planes[2].bytes;
+  final Uint8List yPlane = image.planes[0].bytes;
+  final Uint8List uPlane = image.planes[1].bytes;
+  final Uint8List vPlane = image.planes[2].bytes;
 
-    final int uvRowStride = cameraImage.planes[1].bytesPerRow;
-    final int uvPixelStride = cameraImage.planes[1].bytesPerPixel!;
+  final Float32List input = Float32List(targetSize * targetSize * 3);
+  int pixelIndex = 0;
 
-    for (int h = 0; h < height; h++) {
-      for (int w = 0; w < width; w++) {
-        final int yIndex = h * width + w;
-        final int uvIndex = uvPixelStride * (w ~/ 2) + uvRowStride * (h ~/ 2);
+  final double scaleX = width / targetSize;
+  final double scaleY = height / targetSize;
 
-        final int y = yPlane[yIndex];
-        final int u = uPlane[uvIndex];
-        final int v = vPlane[uvIndex];
+  for (int y = 0; y < targetSize; y++) {
+    for (int x = 0; x < targetSize; x++) {
+      final int srcX = (x * scaleX).floor();
+      final int srcY = (y * scaleY).floor();
 
-        int r = (y + 1.370705 * (v - 128)).round();
-        int g = (y - 0.337633 * (u - 128) - 0.698001 * (v - 128)).round();
-        int b = (y + 1.732446 * (u - 128)).round();
+      final int yIndex = srcY * width + srcX;
+      final int uvIndex = uvPixelStride * (srcX >> 1) + uvRowStride * (srcY >> 1);
 
-        image.setPixelRgb(
-          w,
-          h,
-          r.clamp(0, 255),
-          g.clamp(0, 255),
-          b.clamp(0, 255),
-        );
-      }
+      final int yp = yPlane[yIndex];
+      final int up = uPlane[uvIndex];
+      final int vp = vPlane[uvIndex];
+
+      int r = yp + ((1436 * (vp - 128)) >> 10);
+      int g = yp - ((46549 * (up - 128)) >> 17) - ((93604 * (vp - 128)) >> 17);
+      int b = yp + ((1814 * (up - 128)) >> 10);
+
+      input[pixelIndex++] = (r.clamp(0, 255)) / 255.0;
+      input[pixelIndex++] = (g.clamp(0, 255)) / 255.0;
+      input[pixelIndex++] = (b.clamp(0, 255)) / 255.0;
     }
-
-    return image;
   }
 
-  /// Resizes and normalizes image to Float32List of shape [1, inputSize, inputSize, 3]
-  static Future<Float32List> preprocessImage(
-    img.Image inputImage,
-    int inputSize,
-  ) async {
-    final img.Image resized = img.copyResize(
-      inputImage,
-      width: inputSize,
-      height: inputSize,
-    );
+  return input;
+}
 
-    final Float32List input = Float32List(inputSize * inputSize * 3);
-    int pixelIndex = 0;
-
-    for (int y = 0; y < inputSize; y++) {
-      for (int x = 0; x < inputSize; x++) {
-        final pixel = resized.getPixel(x, y);
-        input[pixelIndex++] = pixel.r / 255.0;
-        input[pixelIndex++] = pixel.g / 255.0;
-        input[pixelIndex++] = pixel.b / 255.0;
-      }
-    }
-
-    return input;
-  }
 }

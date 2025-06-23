@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/util/image_utils.dart';
+import 'package:helmet_detector_app/util/noti_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class MainScreen extends StatefulWidget {
@@ -24,17 +26,41 @@ class _MainScreenState extends State<MainScreen> {
   bool isLooking = false;
   Interpreter? _helmetModel;
   Interpreter? _lookingModel;
+  bool _cameraPermissionGranted = false;
+
+  Timer? _lookingTimer;
+  int _lookingSeconds = 0;
 
   @override
   void initState() {
     super.initState();
     _startTracking();
     _loadModels();
-    _initializeCamera();
+    _checkCameraPermissionAndInitialize();
+  }
+
+  Future<void> _checkCameraPermissionAndInitialize() async {
+    final status = await Permission.camera.status;
+    if (status.isGranted) {
+      _cameraPermissionGranted = true;
+      await _initializeCamera();
+    } else if (status.isDenied || status.isRestricted) {
+      final result = await Permission.camera.request();
+      if (result.isGranted) {
+        _cameraPermissionGranted = true;
+        await _initializeCamera();
+      } else {
+        setState(() {
+          _cameraPermissionGranted = false;
+        });
+      }
+    } else if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
   }
 
   Future<void> _loadModels() async {
-    _helmetModel = await Interpreter.fromAsset('assets/yolov8n.tflite');
+    _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
     // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
   }
 
@@ -52,82 +78,101 @@ class _MainScreenState extends State<MainScreen> {
 
     await _cameraController!.initialize();
 
-    _cameraController!.startImageStream((CameraImage image) {
-      if (_isActivated) _runModelPipeline(image);
-    });
-  }
+    _cameraController!.startImageStream((CameraImage image) async {
+      if (_isActivated) {
+        // await _runModelPipeline(image);
 
-  Future<void> _runModelPipeline(CameraImage image) async {
-    final helmetResult = await runHelmetDetection(image);
-    setState(() {
-      helmetDetected = helmetResult;
-    });
-
-    // if (helmetDetected) {
-    //   final lookResult = await runLookingClassification(image);
-    //   setState(() {
-    //     isLooking = lookResult;
-    //   });
-    // }
-  }
-
-  Future<bool> runHelmetDetection(CameraImage image) async {
-    final inputImage = await CameraImageUtils.convertCameraImage(image);
-    final Float32List input = await CameraImageUtils.preprocessImage(
-      inputImage,
-      416,
-    );
-
-    final outputTensor = _helmetModel!.getOutputTensor(0);
-    final List<int> outputShape = outputTensor.shape; // [1, 6, 3549]
-    final int valuesPerPrediction = outputShape[1]; // 6
-    final int numPredictions = outputShape[2]; // 3549
-    final int outputLength = valuesPerPrediction * numPredictions;
-
-    final outputBuffer = Float32List(outputLength);
-
-    _helmetModel!.run(
-      input.buffer.asUint8List(),
-      outputBuffer.buffer.asUint8List(),
-    );
-
-    for (int i = 0; i < numPredictions; i++) {
-      final double objectness = outputBuffer[4 * numPredictions + i];
-      final double classScore = outputBuffer[5 * numPredictions + i];
-
-      final double confidence = objectness * classScore;
-
-      if (confidence > 0.5) {
-        return true; // "Helmet" detected with high confidence
+        if (isLooking) {
+          _lookingTimer ??= Timer.periodic(const Duration(seconds: 1), (
+            timer,
+          ) async {
+            _lookingSeconds++;
+            if (_lookingSeconds >= 5 && _currentSpeed > 1) {
+              await NotiService().showNotification(
+                title: 'Warning',
+                body: 'You are looking at your phone!',
+              );
+              _lookingSeconds = 0;
+              _lookingTimer?.cancel();
+              _lookingTimer = null;
+            }
+          });
+        } else {
+          _lookingTimer?.cancel();
+          _lookingTimer = null;
+          _lookingSeconds = 0;
+        }
       }
-    }
+    });
 
-    return false;
+    setState(() {});
   }
 
-  Future<bool> runLookingClassification(CameraImage image) async {
-    final inputImage = await CameraImageUtils.convertCameraImage(image);
-    final Float32List input = await CameraImageUtils.preprocessImage(
-      inputImage,
-      300,
-    );
+  // Future<void> _runModelPipeline(CameraImage image) async {
+  //   final helmetResult = await runHelmetDetection(image);
+  //   setState(() {
+  //     helmetDetected = helmetResult;
+  //   });
 
-    final outputTensor = _lookingModel!.getOutputTensor(0);
-    final outputShape = outputTensor.shape;
+  //   // if (helmetDetected) {
+  //   //   final lookResult = await runLookingClassification(image);
+  //   //   setState(() {
+  //   //     isLooking = lookResult;
+  //   //   });
+  //   // }
+  // }
 
-    final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
-    _lookingModel!.run(
-      input.buffer.asUint8List(),
-      outputBuffer.buffer.asUint8List(),
-    );
+  // Future<bool> runHelmetDetection(CameraImage image) async {
+  //   final Float32List input = await CameraImageUtils.preprocessCameraImage(
+  //     image,
+  //   );
+  //   final outputTensor = _helmetModel!.getOutputTensor(0);
+  //   final outputShape = outputTensor.shape; // [1, 6, 3549]
+  //   final int valuesPerPrediction = outputShape[1];
+  //   final int numPredictions = outputShape[2];
+  //   final int outputLength = valuesPerPrediction * numPredictions;
 
-    final scores = outputBuffer;
-    final maxScoreIndex = scores.indexOf(
-      scores.reduce((a, b) => a > b ? a : b),
-    );
+  //   final outputBuffer = Float32List(outputLength);
 
-    return maxScoreIndex == 1;
-  }
+  //   _helmetModel!.run(
+  //     input.buffer.asUint8List(),
+  //     outputBuffer.buffer.asUint8List(),
+  //   );
+
+  //   for (int i = 0; i < numPredictions; i++) {
+  //     final double objectness = outputBuffer[4 * numPredictions + i];
+  //     final double classScore = outputBuffer[5 * numPredictions + i];
+  //     final double confidence = objectness * classScore;
+  //     if (confidence > 0.5) {
+  //       return true;
+  //     }
+  //   }
+
+  //   return false;
+  // }
+
+  // Future<bool> runLookingClassification(CameraImage image) async {
+  //   final Float32List input = await CameraImageUtils.preprocessCameraImage(
+  //     image,
+  //     targetSize: 300,
+  //   );
+
+  //   final outputTensor = _lookingModel!.getOutputTensor(0);
+  //   final outputShape = outputTensor.shape;
+
+  //   final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
+  //   _lookingModel!.run(
+  //     input.buffer.asUint8List(),
+  //     outputBuffer.buffer.asUint8List(),
+  //   );
+
+  //   final scores = outputBuffer;
+  //   final maxScoreIndex = scores.indexOf(
+  //     scores.reduce((a, b) => a > b ? a : b),
+  //   );
+
+  //   return maxScoreIndex == 1;
+  // }
 
   Future<void> _startTracking() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -165,6 +210,9 @@ class _MainScreenState extends State<MainScreen> {
   void _stopTimer() {
     _activationTimer?.cancel();
     _secondsElapsed = 0;
+    _lookingTimer?.cancel();
+    _lookingTimer = null;
+    _lookingSeconds = 0;
   }
 
   @override
@@ -172,6 +220,7 @@ class _MainScreenState extends State<MainScreen> {
     _cameraController?.dispose();
     _helmetModel?.close();
     _lookingModel?.close();
+    _lookingTimer?.cancel();
     super.dispose();
   }
 
@@ -191,7 +240,6 @@ class _MainScreenState extends State<MainScreen> {
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
               ),
-
               const SizedBox(height: 8),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.0),
@@ -212,6 +260,12 @@ class _MainScreenState extends State<MainScreen> {
                     child: CameraPreview(_cameraController!),
                   ),
                 )
+              else if (!_cameraPermissionGranted)
+                const SizedBox(
+                  width: 300,
+                  height: 300,
+                  child: Center(child: Text('Camera permission is required')),
+                )
               else
                 const SizedBox(
                   width: 300,
@@ -220,7 +274,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               const SizedBox(height: 24),
               SizedBox(
-                width: 300,
+                width: 200,
                 height: 50,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -254,9 +308,7 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                   label: Expanded(
                     child: Text(
-                      _isActivated
-                          ? 'Deactivate AI & Camera'
-                          : 'Activate AI & Camera',
+                      _isActivated ? 'Deactivate AI' : 'Activate AI',
                       style: TextStyle(fontSize: 18),
                       textAlign: TextAlign.center,
                     ),
