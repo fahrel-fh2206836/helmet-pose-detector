@@ -64,7 +64,7 @@ class _MainScreenState extends State<MainScreen> {
           _lookingThresholds = 2;
         } else if (_currentSpeed >= 25) {
           _lookingThresholds = 4;
-        } else if (_currentSpeed >= 3) {
+        } else if (_currentSpeed >= 15) {
           _lookingThresholds = 6;
         } else {
           _lookingThresholds = null; // No alert if speed is too low
