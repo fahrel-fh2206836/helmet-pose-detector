@@ -22,21 +22,55 @@ class _MainScreenState extends State<MainScreen> {
   double _currentSpeed = 0.0;
 
   CameraController? _cameraController;
+  bool _cameraPermissionGranted = false;
+
   bool helmetDetected = false;
-  bool isLooking = false;
+  bool isLooking = true;
   Interpreter? _helmetModel;
   Interpreter? _lookingModel;
-  bool _cameraPermissionGranted = false;
 
   Timer? _lookingTimer;
   int _lookingSeconds = 0;
+  int? _lookingThresholds;
+  Timer? _thresholdUpdater;
+  bool _isInCooldown = false;
+  Timer? _cooldownTimer;
 
   @override
   void initState() {
     super.initState();
+    _startThresholdUpdater();
     _startTracking();
     _loadModels();
     _checkCameraPermissionAndInitialize();
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    _helmetModel?.close();
+    _lookingModel?.close();
+    _lookingTimer?.cancel();
+    _thresholdUpdater?.cancel();
+    _cooldownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startThresholdUpdater() {
+    _thresholdUpdater?.cancel();
+    _thresholdUpdater = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        if (_currentSpeed >= 50) {
+          _lookingThresholds = 2;
+        } else if (_currentSpeed >= 25) {
+          _lookingThresholds = 4;
+        } else if (_currentSpeed >= 3) {
+          _lookingThresholds = 6;
+        } else {
+          _lookingThresholds = null; // No alert if speed is too low
+        }
+      });
+    });
   }
 
   Future<void> _checkCameraPermissionAndInitialize() async {
@@ -54,14 +88,7 @@ class _MainScreenState extends State<MainScreen> {
           _cameraPermissionGranted = false;
         });
       }
-    } else if (status.isPermanentlyDenied) {
-      await openAppSettings();
     }
-  }
-
-  Future<void> _loadModels() async {
-    _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
-    // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
   }
 
   Future<void> _initializeCamera() async {
@@ -82,30 +109,47 @@ class _MainScreenState extends State<MainScreen> {
       if (_isActivated) {
         // await _runModelPipeline(image);
 
-        if (isLooking) {
+        if (isLooking && !_isInCooldown) {
           _lookingTimer ??= Timer.periodic(const Duration(seconds: 1), (
             timer,
           ) async {
             _lookingSeconds++;
-            if (_lookingSeconds >= 5 && _currentSpeed > 1) {
+
+            if (_lookingThresholds != null &&
+                _lookingSeconds >= _lookingThresholds!) {
               await NotiService().showNotification(
                 title: 'Warning',
-                body: 'You are looking at your phone!',
+                body: 'FOCUS ON DRIVING!',
               );
-              _lookingSeconds = 0;
-              _lookingTimer?.cancel();
-              _lookingTimer = null;
+
+              // Start cooldown after alert
+              _isInCooldown = true;
+              _cooldownTimer?.cancel();
+              _cooldownTimer = Timer(const Duration(seconds: 10), () {
+                _isInCooldown = false;
+              });
+
+              resetLookingTimer();
             }
           });
         } else {
-          _lookingTimer?.cancel();
-          _lookingTimer = null;
-          _lookingSeconds = 0;
+          resetLookingTimer();
         }
       }
     });
 
     setState(() {});
+  }
+
+  void resetLookingTimer() {
+    _lookingTimer?.cancel();
+    _lookingTimer = null;
+    _lookingSeconds = 0;
+  }
+
+  Future<void> _loadModels() async {
+    _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
+    // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
   }
 
   // Future<void> _runModelPipeline(CameraImage image) async {
@@ -175,16 +219,6 @@ class _MainScreenState extends State<MainScreen> {
   // }
 
   Future<void> _startTracking() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-    if (permission == LocationPermission.deniedForever) return;
-
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -213,15 +247,6 @@ class _MainScreenState extends State<MainScreen> {
     _lookingTimer?.cancel();
     _lookingTimer = null;
     _lookingSeconds = 0;
-  }
-
-  @override
-  void dispose() {
-    _cameraController?.dispose();
-    _helmetModel?.close();
-    _lookingModel?.close();
-    _lookingTimer?.cancel();
-    super.dispose();
   }
 
   @override
