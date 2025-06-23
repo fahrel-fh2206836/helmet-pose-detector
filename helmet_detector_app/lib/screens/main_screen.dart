@@ -92,13 +92,10 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     for (int i = 0; i < numPredictions; i++) {
-      
       final double objectness = outputBuffer[4 * numPredictions + i];
       final double classScore = outputBuffer[5 * numPredictions + i];
 
       final double confidence = objectness * classScore;
-
-
 
       if (confidence > 0.5) {
         return true; // "Helmet" detected with high confidence

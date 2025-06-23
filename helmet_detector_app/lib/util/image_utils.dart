@@ -3,43 +3,49 @@ import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 
 class CameraImageUtils {
+  /// Converts YUV420 CameraImage to RGB `img.Image`
   static Future<img.Image> convertCameraImage(CameraImage cameraImage) async {
     final int width = cameraImage.width;
     final int height = cameraImage.height;
+    final img.Image image = img.Image(
+      width: width,
+      height: height,
+    ); // Create RGB image
 
-    final img.Image image = img.Image(width: width, height: height);
+    final Uint8List yPlane = cameraImage.planes[0].bytes;
+    final Uint8List uPlane = cameraImage.planes[1].bytes;
+    final Uint8List vPlane = cameraImage.planes[2].bytes;
 
-    final Uint8List y = cameraImage.planes[0].bytes;
-    final Uint8List u = cameraImage.planes[1].bytes;
-    final Uint8List v = cameraImage.planes[2].bytes;
-
-    int uvRowStride = cameraImage.planes[1].bytesPerRow;
-    int uvPixelStride = cameraImage.planes[1].bytesPerPixel!;
+    final int uvRowStride = cameraImage.planes[1].bytesPerRow;
+    final int uvPixelStride = cameraImage.planes[1].bytesPerPixel!;
 
     for (int h = 0; h < height; h++) {
       for (int w = 0; w < width; w++) {
+        final int yIndex = h * width + w;
         final int uvIndex = uvPixelStride * (w ~/ 2) + uvRowStride * (h ~/ 2);
-        final int index = h * width + w;
 
-        final int yp = y[index];
-        final int up = u[uvIndex];
-        final int vp = v[uvIndex];
+        final int y = yPlane[yIndex];
+        final int u = uPlane[uvIndex];
+        final int v = vPlane[uvIndex];
 
-        int r = (yp + 1.370705 * (vp - 128)).round();
-        int g = (yp - 0.337633 * (up - 128) - 0.698001 * (vp - 128)).round();
-        int b = (yp + 1.732446 * (up - 128)).round();
+        int r = (y + 1.370705 * (v - 128)).round();
+        int g = (y - 0.337633 * (u - 128) - 0.698001 * (v - 128)).round();
+        int b = (y + 1.732446 * (u - 128)).round();
 
-        r = r.clamp(0, 255);
-        g = g.clamp(0, 255);
-        b = b.clamp(0, 255);
-
-        image.setPixelRgb(w, h, r, g, b);
+        image.setPixelRgb(
+          w,
+          h,
+          r.clamp(0, 255),
+          g.clamp(0, 255),
+          b.clamp(0, 255),
+        );
       }
     }
 
     return image;
   }
 
+  /// Resizes and normalizes image to Float32List of shape [1, inputSize, inputSize, 3]
   static Future<Float32List> preprocessImage(
     img.Image inputImage,
     int inputSize,
@@ -49,9 +55,10 @@ class CameraImageUtils {
       width: inputSize,
       height: inputSize,
     );
-    final Float32List input = Float32List(inputSize * inputSize * 3);
 
+    final Float32List input = Float32List(inputSize * inputSize * 3);
     int pixelIndex = 0;
+
     for (int y = 0; y < inputSize; y++) {
       for (int x = 0; x < inputSize; x++) {
         final pixel = resized.getPixel(x, y);
