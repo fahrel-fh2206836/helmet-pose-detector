@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:helmet_detector_app/widgets/camera_widget.dart';
+import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/util/image_utils.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -16,10 +19,118 @@ class _MainScreenState extends State<MainScreen> {
   int _secondsElapsed = 0;
   double _currentSpeed = 0.0;
 
+  CameraController? _cameraController;
+  bool helmetDetected = false;
+  bool isLooking = false;
+  Interpreter? _helmetModel;
+  Interpreter? _lookingModel;
+
   @override
   void initState() {
     super.initState();
     _startTracking();
+    _loadModels();
+    _initializeCamera();
+  }
+
+  Future<void> _loadModels() async {
+    _helmetModel = await Interpreter.fromAsset('assets/yolov8n.tflite');
+    // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
+  }
+
+  Future<void> _initializeCamera() async {
+    final cameras = await availableCameras();
+    final frontCamera = cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+    );
+
+    _cameraController = CameraController(
+      frontCamera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    await _cameraController!.initialize();
+
+    _cameraController!.startImageStream((CameraImage image) {
+      if (_isActivated) _runModelPipeline(image);
+    });
+  }
+
+  Future<void> _runModelPipeline(CameraImage image) async {
+    final helmetResult = await runHelmetDetection(image);
+    setState(() {
+      helmetDetected = helmetResult;
+    });
+
+    // if (helmetDetected) {
+    //   final lookResult = await runLookingClassification(image);
+    //   setState(() {
+    //     isLooking = lookResult;
+    //   });
+    // }
+  }
+
+  Future<bool> runHelmetDetection(CameraImage image) async {
+    final inputImage = await CameraImageUtils.convertCameraImage(image);
+    final Float32List input = await CameraImageUtils.preprocessImage(
+      inputImage,
+      416,
+    );
+
+    final outputTensor = _helmetModel!.getOutputTensor(0);
+    final List<int> outputShape = outputTensor.shape; // [1, 6, 3549]
+    final int valuesPerPrediction = outputShape[1]; // 6
+    final int numPredictions = outputShape[2]; // 3549
+
+    final int outputLength = valuesPerPrediction * numPredictions;
+    final outputBuffer = Float32List(outputLength);
+
+    _helmetModel!.run(
+      input.buffer.asUint8List(),
+      outputBuffer.buffer.asUint8List(),
+    );
+
+    for (int i = 0; i < numPredictions; i++) {
+      final int baseIndex = i; // Because values are interleaved per value type
+
+      final double objectness = outputBuffer[4 * numPredictions + baseIndex];
+      final double helmetScore = outputBuffer[5 * numPredictions + baseIndex];
+      final double noHelmetScore = outputBuffer[6 * numPredictions + baseIndex];
+
+      final double helmetConfidence = objectness * helmetScore;
+      final double noHelmetConfidence = objectness * noHelmetScore;
+
+      if (helmetConfidence > 0.5 && helmetConfidence > noHelmetConfidence) {
+        return true; // helmet detected
+      }
+    }
+
+    return false; // no confident helmet detection
+  }
+
+  Future<bool> runLookingClassification(CameraImage image) async {
+    final inputImage = await CameraImageUtils.convertCameraImage(image);
+    final Float32List input = await CameraImageUtils.preprocessImage(
+      inputImage,
+      300,
+    );
+
+    final outputTensor = _lookingModel!.getOutputTensor(0);
+    final outputShape = outputTensor.shape;
+
+    final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
+    _lookingModel!.run(
+      input.buffer.asUint8List(),
+      outputBuffer.buffer.asUint8List(),
+    );
+
+    final scores = outputBuffer;
+    final maxScoreIndex = scores.indexOf(
+      scores.reduce((a, b) => a > b ? a : b),
+    );
+
+    return maxScoreIndex == 1;
   }
 
   Future<void> _startTracking() async {
@@ -61,110 +172,129 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   @override
+  void dispose() {
+    _cameraController?.dispose();
+    _helmetModel?.close();
+    _lookingModel?.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16.0),
-              child: Text(
-                'DriveSafe',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'Stay Focused, Drive Safe',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepOrange,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16.0),
+                child: Text(
+                  'DriveSafe',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'Please allow all the permissions that has been asked in order for the app to function properly',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
+
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  'Please allow all the permissions that has been asked in order for the app to function properly',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            // Camera container
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16.0),
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green, width: 2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(child: CameraWidget(isActivated: _isActivated)),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: 300,
-              height: 50,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isActivated
-                      ? const Color(0xFF12EB66)
-                      : Colors.grey,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
+              const SizedBox(height: 24),
+              if (_cameraController != null &&
+                  _cameraController!.value.isInitialized)
+                SizedBox(
+                  width: 300,
+                  height: 300,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: CameraPreview(_cameraController!),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+                )
+              else
+                const SizedBox(
+                  width: 300,
+                  height: 300,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 300,
+                height: 50,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isActivated
+                        ? const Color(0xFF12EB66)
+                        : Colors.grey,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isActivated = !_isActivated;
+
+                      if (_isActivated) {
+                        _startTimer();
+                      } else {
+                        _stopTimer();
+                        helmetDetected = false;
+                        isLooking = false;
+                      }
+                    });
+                  },
+                  icon: Icon(
+                    !_isActivated ? Icons.power_settings_new : Icons.pause,
+                  ),
+                  label: Expanded(
+                    child: Text(
+                      _isActivated
+                          ? 'Deactivate AI & Camera'
+                          : 'Activate AI & Camera',
+                      style: TextStyle(fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-                onPressed: () {
-                  setState(() {
-                    _isActivated = !_isActivated;
-                  });
-                  if (_isActivated) {
-                    _startTimer();
-                  } else {
-                    _stopTimer();
-                  }
-                },
-                icon: Icon(
-                  !_isActivated ? Icons.power_settings_new : Icons.pause,
-                ),
-                label: Expanded(
-                  child: Text(
+              ),
+              const SizedBox(height: 30),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.timer, color: Colors.green),
+                  SizedBox(width: 20),
+                  Text(
                     _isActivated
-                        ? 'Deactive AI & Camera'
-                        : 'Activate AI & Camera',
-                    style: TextStyle(fontSize: 18),
-                    textAlign: TextAlign.center,
+                        ? 'Tracking for $_secondsElapsed seconds'
+                        : 'Currently Not Tracking',
+                    style: const TextStyle(fontSize: 16),
                   ),
-                ),
+                ],
               ),
-            ),
-            const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.timer, color: Colors.green),
-                SizedBox(width: 20),
-                Text(
-                  _isActivated
-                      ? 'Tracking for $_secondsElapsed seconds'
-                      : 'Currently Not Tracking',
-                  style: const TextStyle(fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-            _buildSpeedWidget(),
-          ],
+              const SizedBox(height: 30),
+              _buildSpeedWidget(),
+              const SizedBox(height: 20),
+              Text(
+                "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
+                style: const TextStyle(fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Looking at Phone: ${isLooking ? "Yes" : "No"}",
+                style: const TextStyle(fontSize: 18),
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
