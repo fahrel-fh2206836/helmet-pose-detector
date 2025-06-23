@@ -82,8 +82,8 @@ class _MainScreenState extends State<MainScreen> {
     final List<int> outputShape = outputTensor.shape; // [1, 6, 3549]
     final int valuesPerPrediction = outputShape[1]; // 6
     final int numPredictions = outputShape[2]; // 3549
-
     final int outputLength = valuesPerPrediction * numPredictions;
+
     final outputBuffer = Float32List(outputLength);
 
     _helmetModel!.run(
@@ -92,21 +92,20 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     for (int i = 0; i < numPredictions; i++) {
-      final int baseIndex = i; // Because values are interleaved per value type
+      
+      final double objectness = outputBuffer[4 * numPredictions + i];
+      final double classScore = outputBuffer[5 * numPredictions + i];
 
-      final double objectness = outputBuffer[4 * numPredictions + baseIndex];
-      final double helmetScore = outputBuffer[5 * numPredictions + baseIndex];
-      final double noHelmetScore = outputBuffer[6 * numPredictions + baseIndex];
+      final double confidence = objectness * classScore;
 
-      final double helmetConfidence = objectness * helmetScore;
-      final double noHelmetConfidence = objectness * noHelmetScore;
 
-      if (helmetConfidence > 0.5 && helmetConfidence > noHelmetConfidence) {
-        return true; // helmet detected
+
+      if (confidence > 0.5) {
+        return true; // "Helmet" detected with high confidence
       }
     }
 
-    return false; // no confident helmet detection
+    return false;
   }
 
   Future<bool> runLookingClassification(CameraImage image) async {

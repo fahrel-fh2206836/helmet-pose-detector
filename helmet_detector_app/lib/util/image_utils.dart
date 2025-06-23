@@ -25,31 +25,33 @@ class CameraImageUtils {
         final int up = u[uvIndex];
         final int vp = v[uvIndex];
 
-        int r = (yp + (1.370705 * (vp - 128))).round();
-        int g = (yp - (0.698001 * (vp - 128)) - (0.337633 * (up - 128)))
-            .round();
-        int b = (yp + (1.732446 * (up - 128))).round();
+        int r = (yp + 1.370705 * (vp - 128)).round();
+        int g = (yp - 0.337633 * (up - 128) - 0.698001 * (vp - 128)).round();
+        int b = (yp + 1.732446 * (up - 128)).round();
 
         r = r.clamp(0, 255);
         g = g.clamp(0, 255);
         b = b.clamp(0, 255);
 
-        image.setPixel(w, h, img.ColorRgb8(r, g, b));
+        image.setPixelRgb(w, h, r, g, b);
       }
     }
 
     return image;
   }
 
-  static Future<Float32List> preprocessImage(img.Image inputImage, int inputSize) async {
+  static Future<Float32List> preprocessImage(
+    img.Image inputImage,
+    int inputSize,
+  ) async {
     final img.Image resized = img.copyResize(
       inputImage,
       width: inputSize,
       height: inputSize,
     );
     final Float32List input = Float32List(inputSize * inputSize * 3);
-    int pixelIndex = 0;
 
+    int pixelIndex = 0;
     for (int y = 0; y < inputSize; y++) {
       for (int x = 0; x < inputSize; x++) {
         final pixel = resized.getPixel(x, y);
