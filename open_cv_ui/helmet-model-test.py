@@ -47,7 +47,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else
 # --- LOAD MODEL ---
 model = efficientnet_b3(weights=False)
 model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
-model.load_state_dict(torch.load("helmet-pose-detector/efficientnet_b3_final.pth", map_location=device))
+model.load_state_dict(torch.load("helmet-pose-detector/open_cv_ui/efficientnet_b3_final.pth", map_location=device))
 model.to(device)
 model.eval()
 
