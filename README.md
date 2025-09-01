@@ -108,4 +108,4 @@ helmet-pose-detector/
 ---
 
 ## License
-Add your preferred license (e.g., MIT) here.
+This project is under MIT license. [License](https://github.com/fahrel-fh2206836/helmet-pose-detector/blob/main/LICENSE).
