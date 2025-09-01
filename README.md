@@ -48,7 +48,7 @@ pip install torch torchvision opencv-python pillow
 
 ```bash
 # From the repo root, with venv activated:
-python helmet-test.py
+python helmet-model-test.py
 ```
 
 **Notes:**
