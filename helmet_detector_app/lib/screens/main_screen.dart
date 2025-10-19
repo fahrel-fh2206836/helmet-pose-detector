@@ -3,8 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/util/image_utils.dart';
-import 'package:helmet_detector_app/util/noti_service.dart';
+
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -70,23 +71,7 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
-  // Updates the looking thresholds based on the current speed
-  void _startThresholdUpdater() {
-    _thresholdUpdater?.cancel();
-    _thresholdUpdater = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        if (_currentSpeed >= 50) {
-          _lookingThresholds = 2;
-        } else if (_currentSpeed >= 25) {
-          _lookingThresholds = 4;
-        } else if (_currentSpeed >= 15) {
-          _lookingThresholds = 6;
-        } else {
-          _lookingThresholds = null; // No alert if speed is too low
-        }
-      });
-    });
-  }
+  // ========================= CAMERA FUNCTIONS =========================
 
   // Checks if the camera permission is granted and initializes the camera
   Future<void> _checkCameraPermissionAndInitialize() async {
@@ -94,16 +79,10 @@ class _MainScreenState extends State<MainScreen> {
     if (status.isGranted) {
       _cameraPermissionGranted = true;
       await _initializeCamera();
-    } else if (status.isDenied || status.isRestricted) {
-      final result = await Permission.camera.request();
-      if (result.isGranted) {
-        _cameraPermissionGranted = true;
-        await _initializeCamera();
-      } else {
-        setState(() {
-          _cameraPermissionGranted = false;
-        });
-      }
+    } else {
+      setState(() {
+        _cameraPermissionGranted = false;
+      });
     }
   }
 
@@ -123,6 +102,7 @@ class _MainScreenState extends State<MainScreen> {
     await _cameraController!.initialize();
 
     _cameraController!.startImageStream((CameraImage image) async {
+      if (!mounted) return;
       if (_isActivated) {
         // await _runModelPipeline(image);
 
@@ -157,6 +137,8 @@ class _MainScreenState extends State<MainScreen> {
 
     setState(() {});
   }
+
+  // ========================= MODEL FUNCTIONS (DETECTION) =========================
 
   Future<void> _loadModels() async {
     // _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
@@ -229,6 +211,26 @@ class _MainScreenState extends State<MainScreen> {
   //   return maxScoreIndex == 1;
   // }
 
+  // Updates the looking thresholds based on the current speed
+  void _startThresholdUpdater() {
+    _thresholdUpdater?.cancel();
+    _thresholdUpdater = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        if (_currentSpeed >= 50) {
+          _lookingThresholds = 2;
+        } else if (_currentSpeed >= 25) {
+          _lookingThresholds = 4;
+        } else if (_currentSpeed >= 15) {
+          _lookingThresholds = 6;
+        } else {
+          _lookingThresholds = null; // No alert if speed is too low
+        }
+      });
+    });
+  }
+
+  // ========================= SPEED TRACKING FUNCTIONS =========================
+
   Future<void> _startTracking() async {
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -236,11 +238,14 @@ class _MainScreenState extends State<MainScreen> {
         distanceFilter: 5,
       ),
     ).listen((Position position) {
+      if (!mounted) return;
       setState(() {
         _currentSpeed = (position.speed) * 3.6;
       });
     });
   }
+
+  // ========================= TIMER FUNCTIONS =========================
 
   void _startTimer() {
     _secondsElapsed = 0;
@@ -263,6 +268,8 @@ class _MainScreenState extends State<MainScreen> {
     _lookingTimer = null;
     _lookingSeconds = 0;
   }
+
+  // ========================= BUILD WIDGETS =========================
 
   @override
   Widget build(BuildContext context) {
@@ -346,12 +353,10 @@ class _MainScreenState extends State<MainScreen> {
                   icon: Icon(
                     !_isActivated ? Icons.power_settings_new : Icons.pause,
                   ),
-                  label: Expanded(
-                    child: Text(
-                      _isActivated ? 'Deactivate AI' : 'Activate AI',
-                      style: TextStyle(fontSize: 18),
-                      textAlign: TextAlign.center,
-                    ),
+                  label: Text(
+                    _isActivated ? 'Deactivate AI' : 'Activate AI',
+                    style: TextStyle(fontSize: 18),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ),
@@ -372,11 +377,11 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 30),
               _buildSpeedWidget(),
               const SizedBox(height: 20),
-              // Text(
-              //   "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
-              //   style: const TextStyle(fontSize: 18),
-              // ),
-              // const SizedBox(height: 8),
+              Text(
+                "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
+                style: const TextStyle(fontSize: 18),
+              ),
+              const SizedBox(height: 8),
               Text(
                 "Looking at Phone: ${isLooking ? "Yes" : "No"}",
                 style: const TextStyle(fontSize: 18),

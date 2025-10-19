@@ -4,7 +4,6 @@ class NotiService {
   final notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   bool _isInitialized = false;
-
   bool get isInitialized => _isInitialized;
 
   Future<void> initNotification() async {
@@ -13,10 +12,11 @@ class NotiService {
     const initSettingsAndroid = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
-
     const initSettings = InitializationSettings(android: initSettingsAndroid);
 
     await notificationsPlugin.initialize(initSettings);
+
+    _isInitialized = true;
   }
 
   NotificationDetails notificationDetails() {
