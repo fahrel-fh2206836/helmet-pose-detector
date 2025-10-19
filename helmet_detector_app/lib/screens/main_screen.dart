@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/util/image_utils.dart';
-
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -17,6 +16,8 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  bool _processingFrame = false;
+
   // Whether the AI model is activated and for how long
   bool _isActivated = false;
   Timer? _activationTimer;
@@ -103,35 +104,44 @@ class _MainScreenState extends State<MainScreen> {
 
     _cameraController!.startImageStream((CameraImage image) async {
       if (!mounted) return;
-      if (_isActivated) {
-        // await _runModelPipeline(image);
 
-        if (isLooking && !_isInCooldown) {
-          _lookingTimer ??= Timer.periodic(const Duration(seconds: 1), (
-            timer,
-          ) async {
-            _lookingSeconds++;
+      // 👇 Drop frames if we’re still processing the previous one
+      if (_processingFrame) return;
+      _processingFrame = true;
 
-            if (_lookingThresholds != null &&
-                _lookingSeconds >= _lookingThresholds!) {
-              await NotiService().showNotification(
-                title: 'Warning',
-                body: 'FOCUS ON DRIVING!',
-              );
+      try {
+        if (_isActivated) {
+          // await _runModelPipeline(image);
 
-              // Start cooldown after alert
-              _isInCooldown = true;
-              _cooldownTimer?.cancel();
-              _cooldownTimer = Timer(const Duration(seconds: 10), () {
-                _isInCooldown = false;
-              });
+          if (isLooking && !_isInCooldown) {
+            _lookingTimer ??= Timer.periodic(const Duration(seconds: 1), (
+              timer,
+            ) async {
+              _lookingSeconds++;
 
-              resetLookingTimer();
-            }
-          });
-        } else {
-          resetLookingTimer();
+              if (_lookingThresholds != null &&
+                  _lookingSeconds >= _lookingThresholds!) {
+                await NotiService().showNotification(
+                  title: 'Warning',
+                  body: 'FOCUS ON DRIVING!',
+                );
+
+                // Start cooldown after alert
+                _isInCooldown = true;
+                _cooldownTimer?.cancel();
+                _cooldownTimer = Timer(const Duration(seconds: 10), () {
+                  _isInCooldown = false;
+                });
+
+                resetLookingTimer();
+              }
+            });
+          } else {
+            resetLookingTimer();
+          }
         }
+      } finally {
+        _processingFrame = false;
       }
     });
 
@@ -145,71 +155,71 @@ class _MainScreenState extends State<MainScreen> {
     // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
   }
 
-  // Future<void> _runModelPipeline(CameraImage image) async {
-  //   final helmetResult = await runHelmetDetection(image);
-  //   setState(() {
-  //     helmetDetected = helmetResult;
-  //   });
+  Future<void> _runModelPipeline(CameraImage image) async {
+    final helmetResult = await runHelmetDetection(image);
+    setState(() {
+      helmetDetected = helmetResult;
+    });
 
-  //   // if (helmetDetected) {
-  //   //   final lookResult = await runLookingClassification(image);
-  //   //   setState(() {
-  //   //     isLooking = lookResult;
-  //   //   });
-  //   // }
-  // }
+    // if (helmetDetected) {
+    //   final lookResult = await runLookingClassification(image);
+    //   setState(() {
+    //     isLooking = lookResult;
+    //   });
+    // }
+  }
 
-  // Future<bool> runHelmetDetection(CameraImage image) async {
-  //   final Float32List input = await CameraImageUtils.preprocessCameraImage(
-  //     image,
-  //   );
-  //   final outputTensor = _helmetModel!.getOutputTensor(0);
-  //   final outputShape = outputTensor.shape; // [1, 6, 3549]
-  //   final int valuesPerPrediction = outputShape[1];
-  //   final int numPredictions = outputShape[2];
-  //   final int outputLength = valuesPerPrediction * numPredictions;
+  Future<bool> runHelmetDetection(CameraImage image) async {
+    final Float32List input = await CameraImageUtils.preprocessCameraImage(
+      image,
+    );
+    final outputTensor = _helmetModel!.getOutputTensor(0);
+    final outputShape = outputTensor.shape; // [1, 6, 3549]
+    final int valuesPerPrediction = outputShape[1];
+    final int numPredictions = outputShape[2];
+    final int outputLength = valuesPerPrediction * numPredictions;
 
-  //   final outputBuffer = Float32List(outputLength);
+    final outputBuffer = Float32List(outputLength);
 
-  //   _helmetModel!.run(
-  //     input.buffer.asUint8List(),
-  //     outputBuffer.buffer.asUint8List(),
-  //   );
+    _helmetModel!.run(
+      input.buffer.asUint8List(),
+      outputBuffer.buffer.asUint8List(),
+    );
 
-  //   for (int i = 0; i < numPredictions; i++) {
-  //     final double objectness = outputBuffer[4 * numPredictions + i];
-  //     final double classScore = outputBuffer[5 * numPredictions + i];
-  //     final double confidence = objectness * classScore;
-  //     if (confidence > 0.5) {
-  //       return true;
-  //     }
-  //   }
+    for (int i = 0; i < numPredictions; i++) {
+      final double objectness = outputBuffer[4 * numPredictions + i];
+      final double classScore = outputBuffer[5 * numPredictions + i];
+      final double confidence = objectness * classScore;
+      if (confidence > 0.5) {
+        return true;
+      }
+    }
 
-  //   return false;
-  // }
+    return false;
+  }
 
-  // Future<bool> runLookingClassification(CameraImage image) async {
-  //   final Float32List input = await CameraImageUtils.preprocessCameraImage(
-  //     image,
-  //     targetSize: 300,
-  //   );
+  Future<bool> runLookingClassification(CameraImage image) async {
+    final Float32List input = await CameraImageUtils.preprocessCameraImage(
+      image,
+      targetSize: 300,
+    );
 
-  //   final outputTensor = _lookingModel!.getOutputTensor(0);
-  //   final outputShape = outputTensor.shape;
+    final outputTensor = _lookingModel!.getOutputTensor(0);
+    final outputShape = outputTensor.shape;
 
-  //   final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
-  //   _lookingModel!.run(
-  //     input.buffer.asUint8List(),
-  //     outputBuffer.buffer.asUint8List(),
-  //   );
+    final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
+    _lookingModel!.run(
+      input.buffer.asUint8List(),
+      outputBuffer.buffer.asUint8List(),
+    );
 
-  //   final scores = outputBuffer;
-  //   final maxScoreIndex = scores.indexOf(
-  //     scores.reduce((a, b) => a > b ? a : b),
-  //   );
+    final scores = outputBuffer;
+    final maxScoreIndex = scores.indexOf(
+      scores.reduce((a, b) => a > b ? a : b),
+    );
 
-  //   return maxScoreIndex == 1;
-  // }
+    return maxScoreIndex == 1;
+  }
 
   // Updates the looking thresholds based on the current speed
   void _startThresholdUpdater() {
@@ -311,7 +321,11 @@ class _MainScreenState extends State<MainScreen> {
                 const SizedBox(
                   width: 300,
                   height: 300,
-                  child: Center(child: Text('Camera permission is required')),
+                  child: Center(
+                    child: Text(
+                      'Camera permission is required and restart once permission is given.',
+                    ),
+                  ),
                 )
               else
                 const SizedBox(
