@@ -16,23 +16,37 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  // Whether the AI model is activated and for how long
   bool _isActivated = false;
   Timer? _activationTimer;
   int _secondsElapsed = 0;
-  double _currentSpeed = 0.0;
 
+  // Current speed of the user
+  double _currentSpeed = 0;
+
+  // Camera controller and permission check for the camera
   CameraController? _cameraController;
   bool _cameraPermissionGranted = false;
 
+  // Whether the user is wearing a helmet
   bool helmetDetected = false;
-  bool isLooking = true;
+
+  // Whether the user is looking at their phone
+  bool isLooking = false;
+
+  // Models for helmet and looking detection
   Interpreter? _helmetModel;
   Interpreter? _lookingModel;
 
+  // Tracks how long the user has been looking at their phone
   Timer? _lookingTimer;
   int _lookingSeconds = 0;
+
+  // Thresholds for looking at phone based on speed
   int? _lookingThresholds;
   Timer? _thresholdUpdater;
+
+  // Cooldown period after an alert to prevent spamming
   bool _isInCooldown = false;
   Timer? _cooldownTimer;
 
@@ -56,6 +70,7 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
+  // Updates the looking thresholds based on the current speed
   void _startThresholdUpdater() {
     _thresholdUpdater?.cancel();
     _thresholdUpdater = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -73,6 +88,7 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  // Checks if the camera permission is granted and initializes the camera
   Future<void> _checkCameraPermissionAndInitialize() async {
     final status = await Permission.camera.status;
     if (status.isGranted) {
@@ -91,6 +107,7 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // Initializes the camera
   Future<void> _initializeCamera() async {
     final cameras = await availableCameras();
     final frontCamera = cameras.firstWhere(
@@ -139,12 +156,6 @@ class _MainScreenState extends State<MainScreen> {
     });
 
     setState(() {});
-  }
-
-  void resetLookingTimer() {
-    _lookingTimer?.cancel();
-    _lookingTimer = null;
-    _lookingSeconds = 0;
   }
 
   Future<void> _loadModels() async {
@@ -244,6 +255,10 @@ class _MainScreenState extends State<MainScreen> {
   void _stopTimer() {
     _activationTimer?.cancel();
     _secondsElapsed = 0;
+    resetLookingTimer();
+  }
+
+  void resetLookingTimer() {
     _lookingTimer?.cancel();
     _lookingTimer = null;
     _lookingSeconds = 0;
@@ -261,7 +276,7 @@ class _MainScreenState extends State<MainScreen> {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16.0),
                 child: Text(
-                  'DriveSafe',
+                  'RideSafe',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
               ),
