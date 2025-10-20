@@ -34,11 +34,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  geolocator: ^14.0.1
-  camera: ^0.11.1
-  permission_handler: ^12.0.0+1
+  geolocator: ^14.0.2
+  camera: ^0.11.2
+  permission_handler: ^12.0.1
   tflite_flutter: ^0.11.0
-  flutter_local_notifications: ^19.3.0
+  flutter_local_notifications: ^19.5.0
+  image: ^4.5.4
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +66,7 @@ flutter:
   assets:
     - assets/yolov8n.tflite
     - assets/yolov8s.tflite
+    - assets/helmet_pose_fp16.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
