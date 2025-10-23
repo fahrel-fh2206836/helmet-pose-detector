@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
-import 'package:helmet_detector_app/services/helmet_stream_service.dart';
+import 'package:helmet_detector_app/services/helmet_video_classifier.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
+import 'package:helmet_detector_app/services/permission_service.dart';
+import 'package:helmet_detector_app/services/speed_services.dart';
 import 'package:helmet_detector_app/widgets/icon_with_text.dart';
 
 class MainScreen extends StatefulWidget {
@@ -18,23 +20,48 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   HelmetPose? _pose;
   HelmetVideoClassifier? _streamer;
 
-  final _noti = NotiService();
-  StreamSubscription<({String label, double prob})>? _sub;
-
+  StreamSubscription<({String label, double prob})>? _modelSub;
   String _status = 'not_tracking';
-  bool _isStreamerRunning = false;
-  ({String label, double prob})? _last;
+  bool _isStreamerRunning = true;
+  ({String label, double prob})? _lastOutput;
+
+  final _speed = SpeedService(smoothingWindow: 4);
+  StreamSubscription<double>? _speedSub;
+  double _kmhCurrent = 0.0;
+
+  final _noti = NotiService();
 
   static const double alertThreshold = 0.80; // for "looking"
+  static const double minKmhForAlert = 5.0;
+
+  bool hasCameraPermission = false;
+  bool hasNotiPermission = false;
+  bool hasLocationPermission = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _permissionCheck();
     _bootstrap();
   }
 
+  void _permissionCheck() async {
+    hasCameraPermission = await PermissionService.hasCameraPermission();
+    hasNotiPermission = await PermissionService.hasNotificationPermission();
+    hasLocationPermission = await PermissionService.hasLocationPermission();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _bootstrap() async {
+    await _speed.start();
+    _speedSub = _speed.speedStream.listen((v) {
+      if (!mounted) return;
+      setState(() => _kmhCurrent = v);
+    });
+
     try {
       final cams = await availableCameras();
       final front = cams.firstWhere(
@@ -61,17 +88,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
 
       // Subscribe to predictions: labels are "looking" / "not_looking"
-      _sub = _streamer!.stream.listen((res) async {
+      _modelSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
-        setState(() => _last = res);
+        setState(() => _lastOutput = res);
 
         // Optional: notify only when "looking" is confident
-        if (res.label == 'looking' && res.prob >= alertThreshold) {
+        if (res.label == 'looking' &&
+            res.prob >= alertThreshold &&
+            _kmhCurrent >= minKmhForAlert) {
           await _noti.showNotification(
             title: 'Warning!',
             body: 'Detected: looking at phone!',
           );
         }
+      });
+      _streamer?.start();
+      setState(() {
+        _status = "tracking";
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
@@ -86,9 +119,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      _speed.stop();
       _streamer?.stop();
       cam.pausePreview();
     } else if (state == AppLifecycleState.resumed) {
+      _speed.start();
       cam.resumePreview();
       controlStreamer();
     }
@@ -97,7 +132,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sub?.cancel();
+    _speedSub?.cancel();
+    _speed.dispose();
+    _modelSub?.cancel();
     _streamer?.dispose();
     _cam?.dispose();
     _pose?.close();
@@ -127,6 +164,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text(
           'RideSafe',
@@ -134,58 +172,66 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          AspectRatio(
-            aspectRatio: cam.value.aspectRatio,
-            child: CameraPreview(cam),
-          ),
-          const SizedBox(height: 20),
-          IconWithText(
-            iconData: Icons.phone_android,
-            text:
-                "Looking at Phone: ${_last?.label == "looking" ? "Yes" : "No"}",
-          ),
-          const SizedBox(height: 20),
-          IconWithText(
-            iconData: Icons.motorcycle,
-            text: /*'Current Speed: ${_currentSpeed.toStringAsFixed(2)} km/h'*/
-                "",
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isStreamerRunning
-                  ? const Color(0xFF12EB66)
-                  : Colors.grey,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildPermissionText(),
+            const SizedBox(height: 20),
+            AspectRatio(
+              aspectRatio: cam.value.aspectRatio,
+              child: CameraPreview(cam),
+            ),
+            const SizedBox(height: 20),
+            IconWithText(
+              iconData: Icons.phone_android,
+              text:
+                  "Looking at Phone: ${_lastOutput?.label == "looking" ? "Yes" : "No"}",
+            ),
+            const SizedBox(height: 20),
+            IconWithText(
+              iconData: Icons.motorcycle,
+              text: 'Current Speed: ${_kmhCurrent.toStringAsFixed(2)} km/h',
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isStreamerRunning
+                    ? const Color(0xFF12EB66)
+                    : Colors.grey,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              onPressed: () {
+                controlStreamer();
+              },
+              icon: Icon(
+                !_isStreamerRunning ? Icons.power_settings_new : Icons.pause,
+              ),
+              label: Text(
+                _isStreamerRunning ? 'Deactivate AI' : 'Activate AI',
+                style: TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
               ),
             ),
-            onPressed: () {
-              controlStreamer();
-            },
-            icon: Icon(
-              !_isStreamerRunning ? Icons.power_settings_new : Icons.pause,
+            const SizedBox(height: 20),
+            Text("Model Result & Status"),
+            Container(
+              height: 80,
+              width: 250,
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green),
+              ),
+              child: _buildModelData(),
             ),
-            label: Text(
-              _isStreamerRunning ? 'Deactivate AI' : 'Activate AI',
-              style: TextStyle(fontSize: 18),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text("Model Result & Status"),
-          Container(
-            height: 80,
-            width: 250,
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(border: Border.all(color: Colors.green)),
-            child: _buildModelData(),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -194,11 +240,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return Column(
       children: [
         Text(
-          'Output: ${_last!.label} (${(_last!.prob * 100).toStringAsFixed(1)}%)',
+          'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
           style: const TextStyle(fontSize: 16),
         ),
         const SizedBox(height: 8),
         Text('Status: $_status', style: const TextStyle(fontSize: 16)),
+      ],
+    );
+  }
+
+  Widget _buildPermissionText() {
+    return Column(
+      children: [
+        Text(
+          'Please allow all the permissions that has been asked in order for the app to function properly:',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16),
+        ),
+        SizedBox(height: 5),
+        Text("Location: ${hasLocationPermission ? "Yes" : "No"}"),
+        Text("Notification: ${hasNotiPermission ? "Yes" : "No"}"),
+        Text("Camera: ${hasCameraPermission ? "Yes" : "No"}"),
       ],
     );
   }
