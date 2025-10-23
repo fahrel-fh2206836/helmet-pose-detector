@@ -210,6 +210,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
+        actions: [
+          Padding(padding: const EdgeInsets.all(8.0), child: Text("ver. 1.0")),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
