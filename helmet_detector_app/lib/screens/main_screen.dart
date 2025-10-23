@@ -27,17 +27,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   final _speed = SpeedService(smoothingWindow: 4);
   StreamSubscription<double>? _speedSub;
-  double _kmhCurrent = 0.0;
+  double _kmhCurrent = 0;
 
   final _noti = NotiService();
 
   static const double _probThreshold = 0.7; // model confidence for "looking"
   static const double _minSpeedForAlert = 5.0;
-  static const Duration _cooldown = Duration(seconds: 10);
+  // static const Duration _cooldown = Duration(seconds: 10);
 
   DateTime? _lookingSince; // when we first saw a qualifying "looking" state
-  DateTime? _lastAlertAt; // last time we sent a warning
-  Duration? _requiredHold; // updated from speed
+  // DateTime? _lastAlertAt; // last time we sent a warning
+  Duration _requiredHold = const Duration(seconds: 6); // updated dynamically
 
   bool hasCameraPermission = false;
   bool hasNotiPermission = false;
@@ -101,18 +101,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         maxFps: 8, // tune per device
       );
 
+      _streamer?.start();
+
       // Subscribe to predictions: labels are "looking" / "not_looking"
       _modelSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
 
+        // 1) Always update UI first so it reflects the latest model output
+        setState(() {
+          _lastOutput = res; // shows label + prob in your UI
+          _status = 'tracking';
+        });
+
+        // 2) Now do alert logic
         final now = DateTime.now();
-        final speed = _kmhCurrent; // from your SpeedService
+        final speed = _kmhCurrent; // from SpeedService
         _requiredHold = _holdTimeForSpeed(speed);
 
         final bool isLooking =
             (res.label == 'looking') && (res.prob >= _probThreshold);
 
-        // Skip alerts entirely when speed < 5 km/h
+        // Skip alerts entirely when speed < 5 km/h (but UI already updated above)
         if (speed < _minSpeedForAlert) {
           _lookingSince = null; // reset any hold
           return;
@@ -121,28 +130,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (isLooking) {
           _lookingSince ??= now;
           final heldFor = now.difference(_lookingSince!);
+          // final inCooldown =
+          //     _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
 
-          final inCooldown =
-              _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
-
-          if (!inCooldown && heldFor >= _requiredHold!) {
+          if ( /*!inCooldown &&*/ heldFor >= _requiredHold) {
             await _noti.showNotification(
               title: 'Warning!',
               body:
                   'Detected: looking at phone at ${speed.toStringAsFixed(1)} km/h',
             );
-            _lastAlertAt = now;
+            // _lastAlertAt = now;
             _lookingSince = null; // require fresh hold after cooldown
           }
         } else {
           _lookingSince = null; // broke the "looking" streak
         }
-
-        // (Optional) update UI
-        setState(() {
-          _lastOutput = res;
-          _status = 'tracking';
-        });
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
@@ -180,7 +182,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void controlStreamer() {
-    _isStreamerRunning = !_isStreamerRunning;
     if (_isStreamerRunning) {
       _streamer?.start();
       setState(() {
@@ -246,6 +247,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
               onPressed: () {
+                _isStreamerRunning = !_isStreamerRunning;
                 controlStreamer();
               },
               icon: Icon(
