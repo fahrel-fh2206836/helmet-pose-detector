@@ -4,7 +4,7 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class HelmetPose {
-  static const classes = ["looking_at_phone", "not_looking"];
+  static const classes = ["looking", "not_looking"];
   static const int H = 300, W = 300, C = 3;
 
   final Interpreter _interpreter;
