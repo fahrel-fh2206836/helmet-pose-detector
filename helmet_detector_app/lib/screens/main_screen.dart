@@ -230,10 +230,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (cam == null || !cam.value.isInitialized) {
       return const Scaffold(
         body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
-            Text(
-              "Ensure that camera permission is granted. Otherwise, grant permission and restart the app.",
+            SizedBox(height: 20),
+            Align(
+              alignment: Alignment.center,
+              child: Text(
+                "Taking too long?\nEnsure that camera permission is granted.\nOtherwise, grant permission and restart the app.",
+              ),
             ),
           ],
         ),
@@ -283,7 +288,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   vertical: 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(50),
                 ),
               ),
               onPressed: () {
@@ -294,7 +299,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 !_isServiceRunning ? Icons.power_settings_new : Icons.pause,
               ),
               label: Text(
-                _isServiceRunning ? 'Deactivate AI' : 'Activate AI',
+                _isServiceRunning
+                    ? 'Deactivate Detection'
+                    : 'Activate Detection',
                 style: TextStyle(fontSize: 18),
                 textAlign: TextAlign.center,
               ),
