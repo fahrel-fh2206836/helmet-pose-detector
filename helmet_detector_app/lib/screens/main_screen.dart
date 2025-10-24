@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/enum/common_enums.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:helmet_detector_app/services/helmet_video_classifier.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
@@ -25,9 +26,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _isStreamerRunning = true;
   ({String label, double prob})? _lastOutput;
 
-  final _speed = SpeedService(smoothingWindow: 4);
+  final _speed = SpeedService(
+    windowSize: 5,
+    emaAlpha: 0.35,
+    maxAccuracyMeters: 25.0,
+    // You can tweak locationSettings here if you want:
+    // locationSettings: const LocationSettings(
+    //   accuracy: LocationAccuracy.bestForNavigation,
+    //   distanceFilter: 2,
+    // ),
+  );
   StreamSubscription<double>? _speedSub;
-  double _kmhCurrent = 0;
+  StreamSubscription<SpeedSource>? _srcSub;
+  StreamSubscription<SpeedStatus>? _statSub;
+
+  double _kmhCurrent = 0.0;
+  SpeedSource _kmhSource = SpeedSource.unknown;
+  SpeedStatus _speedStatus = SpeedStatus.stopped;
 
   final _noti = NotiService();
 
@@ -70,10 +85,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrap() async {
-    await _speed.start();
+    _speed.start();
     _speedSub = _speed.speedStream.listen((v) {
       if (!mounted) return;
       setState(() => _kmhCurrent = v);
+    });
+
+    _srcSub = _speed.sourceStream.listen((s) {
+      if (!mounted) return;
+      setState(() => _kmhSource = s);
+    });
+
+    _statSub = _speed.statusStream.listen((s) {
+      if (!mounted) return;
+      setState(() => _speedStatus = s);
     });
 
     try {
@@ -169,18 +194,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _speedSub?.cancel();
-    _speed.dispose();
-    _modelSub?.cancel();
-    _streamer?.dispose();
-    _cam?.dispose();
-    _pose?.close();
-    super.dispose();
-  }
-
   void controlStreamer() {
     if (_isStreamerRunning) {
       _streamer?.start();
@@ -193,6 +206,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _status = "not_tracking";
       });
     }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _speedSub?.cancel();
+    _speed.dispose();
+    _srcSub?.cancel();
+    _statSub?.cancel();
+    _modelSub?.cancel();
+    _streamer?.dispose();
+    _cam?.dispose();
+    _pose?.close();
+    super.dispose();
   }
 
   @override
@@ -212,7 +239,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text(
           'RideSafe',
@@ -274,14 +300,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             const SizedBox(height: 20),
             Text("Model Result & Status"),
             Container(
-              height: 80,
-              width: 250,
               padding: EdgeInsets.all(10),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.green),
               ),
               child: _buildModelData(),
             ),
+            const SizedBox(height: 8),
+            Text("Speed Data"),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green),
+              ),
+              child: _buildSpeedData(),
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -290,13 +324,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Widget _buildModelData() {
     return Column(
+      spacing: 8,
       children: [
         Text(
           'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
-          style: const TextStyle(fontSize: 16),
         ),
-        const SizedBox(height: 8),
-        Text('Status: $_status', style: const TextStyle(fontSize: 16)),
+        Text('Status: $_status'),
       ],
     );
   }
@@ -313,6 +346,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         Text("Location: ${hasLocationPermission ? "Yes" : "No"}"),
         Text("Notification: ${hasNotiPermission ? "Yes" : "No"}"),
         Text("Camera: ${hasCameraPermission ? "Yes" : "No"}"),
+      ],
+    );
+  }
+
+  Widget _buildSpeedData() {
+    return Column(
+      children: [
+        Text('Speed: ${_kmhCurrent.toStringAsFixed(1)} km/h'),
+        Text('Source: ${prettySource(_kmhSource)}'),
+        Text('GPS: ${prettyStatus(_speedStatus)}'),
       ],
     );
   }
