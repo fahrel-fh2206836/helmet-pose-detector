@@ -5,8 +5,8 @@ import 'package:geolocator/geolocator.dart';
 /// Emits current ground speed in km/h, with simple smoothing.
 /// Call start() once, listen to [speedStream], and stop()/dispose() when done.
 class SpeedService {
-  final _ctrl = StreamController<double>.broadcast();
-  Stream<double> get speedStream => _ctrl.stream;
+  final _controller = StreamController<double>.broadcast();
+  Stream<double> get speedStream => _controller.stream;
 
   // public, always holds last emitted speed (km/h)
   double latestKmh = 0.0;
@@ -36,10 +36,6 @@ class SpeedService {
     if (!serviceEnabled) {
       // You can surface a UI prompt elsewhere; we keep service silent here
     }
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
 
     _sub ??= Geolocator.getPositionStream(locationSettings: _settings).listen(
       (pos) {
@@ -60,7 +56,7 @@ class SpeedService {
 
     final avg = _buf.reduce((a, b) => a + b) / _buf.length;
     latestKmh = avg;
-    if (!_ctrl.isClosed) _ctrl.add(latestKmh);
+    if (!_controller.isClosed) _controller.add(latestKmh);
   }
 
   Future<void> stop() async {
@@ -71,6 +67,6 @@ class SpeedService {
 
   Future<void> dispose() async {
     await stop();
-    await _ctrl.close();
+    await _controller.close();
   }
 }
