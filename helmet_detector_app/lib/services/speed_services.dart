@@ -20,21 +20,25 @@ class SpeedService {
   // Tweak location settings as needed
   final LocationSettings _settings;
 
-  SpeedService({
-    int smoothingWindow = 4,
-    LocationSettings? settings,
-  })  : _window = smoothingWindow.clamp(1, 20),
-        _settings = settings ??
-            const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              distanceFilter: 5, // meters
-            );
+  SpeedService({int smoothingWindow = 4, LocationSettings? settings})
+    : _window = smoothingWindow.clamp(1, 20),
+      _settings =
+          settings ??
+          const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5, // meters
+          );
 
   Future<void> start() async {
     // Ensure location services & permission are OK (optional; can be handled elsewhere)
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       // You can surface a UI prompt elsewhere; we keep service silent here
+    }
+
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      return;
     }
 
     _sub ??= Geolocator.getPositionStream(locationSettings: _settings).listen(

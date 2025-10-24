@@ -199,7 +199,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final cam = _cam;
     if (cam == null || !cam.value.isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Column(
+          children: [
+            CircularProgressIndicator(),
+            Text(
+              "Ensure that camera permission is granted. Otherwise, grant permission and restart the app.",
+            ),
+          ],
+        ),
+      );
     }
 
     return Scaffold(

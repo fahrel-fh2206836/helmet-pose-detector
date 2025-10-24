@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:helmet_detector_app/services/permission_service.dart';
 
 class NotiService {
   final notificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -35,6 +36,9 @@ class NotiService {
     String? title,
     String? body,
   }) async {
+    if (!await PermissionService.hasLocationPermission()) {
+      return;
+    }
     return notificationsPlugin.show(id, title, body, notificationDetails());
   }
 }
