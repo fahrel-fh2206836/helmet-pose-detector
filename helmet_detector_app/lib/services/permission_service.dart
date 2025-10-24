@@ -7,8 +7,6 @@ class PermissionService {
   static Future<void> requestAllPermissions() async {
     await _handleLocation();
     await _handleNotifications();
-    // Camera is also requested contextually in MainScreen,
-    // but we can pre-request here to streamline onboarding.
     await _handleCamera();
   }
 
@@ -33,4 +31,12 @@ class PermissionService {
       await Permission.camera.request();
     }
   }
+
+  static Future<bool> hasCameraPermission() async =>
+      await Permission.camera.status.isGranted;
+  static Future<bool> hasNotificationPermission() async =>
+      await Permission.notification.status.isGranted;
+  static Future<bool> hasLocationPermission() async =>
+      await Geolocator.checkPermission() == LocationPermission.always ||
+      await Geolocator.checkPermission() == LocationPermission.whileInUse;
 }
