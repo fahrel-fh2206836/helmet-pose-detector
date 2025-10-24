@@ -23,7 +23,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   StreamSubscription<({String label, double prob})>? _modelSub;
   String _status = 'not_tracking';
-  bool _isStreamerRunning = true;
+  bool _isServiceRunning = true;
   ({String label, double prob})? _lastOutput;
 
   final _speed = SpeedService(
@@ -190,18 +190,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       _speed.start();
       cam.resumePreview();
-      controlStreamer();
+      controlServices();
     }
   }
 
-  void controlStreamer() {
-    if (_isStreamerRunning) {
+  void controlServices() {
+    if (_isServiceRunning) {
       _streamer?.start();
+      _speed.start();
       setState(() {
         _status = "tracking";
       });
     } else {
       _streamer?.stop();
+      _speed.stop();
       setState(() {
         _status = "not_tracking";
       });
@@ -272,7 +274,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isStreamerRunning
+                backgroundColor: _isServiceRunning
                     ? const Color(0xFF12EB66)
                     : Colors.grey,
                 foregroundColor: Colors.black,
@@ -285,52 +287,48 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
               onPressed: () {
-                _isStreamerRunning = !_isStreamerRunning;
-                controlStreamer();
+                _isServiceRunning = !_isServiceRunning;
+                controlServices();
               },
               icon: Icon(
-                !_isStreamerRunning ? Icons.power_settings_new : Icons.pause,
+                !_isServiceRunning ? Icons.power_settings_new : Icons.pause,
               ),
               label: Text(
-                _isStreamerRunning ? 'Deactivate AI' : 'Activate AI',
+                _isServiceRunning ? 'Deactivate AI' : 'Activate AI',
                 style: TextStyle(fontSize: 18),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 20),
-            Text("Model Result & Status"),
-            Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green),
-              ),
-              child: _buildModelData(),
-            ),
-            const SizedBox(height: 8),
-            Text("Speed Data"),
-            Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green),
-              ),
-              child: _buildSpeedData(),
+            ExpansionTile(
+              leading: Icon(Icons.info, color: Colors.green),
+              title: Text('Technical Data'),
+              subtitle: Text('Tap to expand debugs'),
+              children: [
+                Text("Model Result & Status"),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: _buildModelData(),
+                ),
+                const SizedBox(height: 8),
+                Text("Speed Data"),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: _buildSpeedData(),
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
             const SizedBox(height: 8),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildModelData() {
-    return Column(
-      spacing: 8,
-      children: [
-        Text(
-          'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
-        ),
-        Text('Status: $_status'),
-      ],
     );
   }
 
@@ -346,6 +344,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         Text("Location: ${hasLocationPermission ? "Yes" : "No"}"),
         Text("Notification: ${hasNotiPermission ? "Yes" : "No"}"),
         Text("Camera: ${hasCameraPermission ? "Yes" : "No"}"),
+      ],
+    );
+  }
+
+  Widget _buildModelData() {
+    return Column(
+      spacing: 8,
+      children: [
+        Text(
+          'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
+        ),
+        Text('Status: $_status'),
       ],
     );
   }
