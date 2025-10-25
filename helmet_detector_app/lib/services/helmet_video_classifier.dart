@@ -48,8 +48,11 @@ class HelmetVideoClassifier {
       last = now;
 
       try {
-        final bytes = _cameraImageToJpeg(image);      // YUV420 -> RGB -> JPEG
-        final res = await model.predict(bytes);       // uses your helmet_pose.dart
+        final bytes = _cameraImageToJpeg(
+          image,
+          jpegQuality: 60,
+        ); // YUV420 -> RGB -> JPEG
+        final res = await model.predict(bytes); // uses your helmet_pose.dart
         if (!_controller.isClosed) _controller.add(res);
       } catch (_) {
         // swallow frame errors to keep stream alive

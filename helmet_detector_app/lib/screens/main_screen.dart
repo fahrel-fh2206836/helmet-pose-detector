@@ -235,9 +235,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           children: [
             _buildPermissionText(),
             const SizedBox(height: 20),
-            AspectRatio(
-              aspectRatio: cam.value.aspectRatio,
-              child: CameraPreview(cam),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * .5,
+              width: MediaQuery.of(context).size.width * 1,
+              child: AspectRatio(
+                aspectRatio: cam.value.aspectRatio,
+                child: CameraPreview(cam),
+              ),
             ),
             const SizedBox(height: 20),
             IconWithText(
