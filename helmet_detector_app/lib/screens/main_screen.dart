@@ -288,7 +288,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   vertical: 12,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(50),
+                  borderRadius: BorderRadius.circular(30),
                 ),
               ),
               onPressed: () {
