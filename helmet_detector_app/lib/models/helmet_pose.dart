@@ -127,4 +127,34 @@ class HelmetPose {
     final prob = predIdx == 0 ? p0 : p1;
     return (label: classes[predIdx], prob: prob);
   }
+
+  /// Expose shapes once so the app can know if input is NCHW vs NHWC.
+  bool get isNCHW {
+    final inShape = _interpreter.getInputTensor(0).shape;
+    // e.g., [1,3,300,300] vs [1,300,300,3]
+    return inShape.length == 4 && inShape[0] == 1 && inShape[1] == 3;
+  }
+
+  /// Convenience: run when you already have a nested input tensor prepared.
+  /// `inputNested` must match the interpreter's expected layout.
+  /// Returns (label, prob) and applies the same softmax you already use.
+  Future<({String label, double prob})> infer(Object inputNested) async {
+    // Read output shape, e.g., [1,2]
+    final outShape = _interpreter.getOutputTensor(0).shape;
+    final output = List.generate(
+      outShape[0],
+      (_) => List<double>.filled(outShape[1], 0.0, growable: false),
+      growable: false,
+    );
+
+    _interpreter.run(inputNested, output); // same as in predict()
+    final a = output[0][0], b = output[0][1];
+    final m = math.max(a, b);
+    final ea = math.exp(a - m), eb = math.exp(b - m);
+    final s = ea + eb;
+    final p0 = ea / s, p1 = eb / s;
+    final predIdx = p1 > p0 ? 1 : 0;
+    final prob = predIdx == 0 ? p0 : p1;
+    return (label: HelmetPose.classes[predIdx], prob: prob);
+  }
 }
