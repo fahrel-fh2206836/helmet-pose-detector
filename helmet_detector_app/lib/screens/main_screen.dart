@@ -22,7 +22,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   StreamSubscription<({String label, double prob})>? _modelSub;
   String _status = 'not_tracking';
-  bool _isStreamerRunning = true;
+  bool _isServiceRunning = true;
   ({String label, double prob})? _lastOutput;
 
   final _speed = SpeedService(smoothingWindow: 4);
@@ -182,12 +182,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void controlStreamer() {
-    if (_isStreamerRunning) {
+    if (_isServiceRunning) {
+      _speed.start();
       _streamer?.start();
       setState(() {
         _status = "tracking";
       });
     } else {
+      _speed.stop();
       _streamer?.stop();
       setState(() {
         _status = "not_tracking";
@@ -201,10 +203,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (cam == null || !cam.value.isInitialized) {
       return const Scaffold(
         body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
-            Text(
-              "Ensure that camera permission is granted. Otherwise, grant permission and restart the app.",
+            SizedBox(height: 20),
+            Align(
+              alignment: Alignment.center,
+              child: Text(
+                "Taking too long?\nEnsure that camera permission is granted.\nOtherwise, grant permission and restart the app.",
+              ),
             ),
           ],
         ),
@@ -246,7 +253,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isStreamerRunning
+                backgroundColor: _isServiceRunning
                     ? const Color(0xFF12EB66)
                     : Colors.grey,
                 foregroundColor: Colors.black,
@@ -259,29 +266,38 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 ),
               ),
               onPressed: () {
-                _isStreamerRunning = !_isStreamerRunning;
+                _isServiceRunning = !_isServiceRunning;
                 controlStreamer();
               },
               icon: Icon(
-                !_isStreamerRunning ? Icons.power_settings_new : Icons.pause,
+                !_isServiceRunning ? Icons.power_settings_new : Icons.pause,
               ),
               label: Text(
-                _isStreamerRunning ? 'Deactivate AI' : 'Activate AI',
+                _isServiceRunning
+                    ? 'Deactivate Detection'
+                    : 'Activate Detection',
                 style: TextStyle(fontSize: 18),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 20),
-            Text("Model Result & Status"),
-            Container(
-              height: 80,
-              width: 250,
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.green),
-              ),
-              child: _buildModelData(),
+            ExpansionTile(
+              leading: Icon(Icons.info, color: Colors.green),
+              title: Text('Technical Data'),
+              subtitle: Text('Tap to expand debugs'),
+              children: [
+                Text("Model Result & Status"),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: _buildModelData(),
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
