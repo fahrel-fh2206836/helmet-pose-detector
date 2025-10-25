@@ -8,6 +8,7 @@ import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
 import 'package:helmet_detector_app/services/speed_services.dart';
 import 'package:helmet_detector_app/widgets/icon_with_text.dart';
+import 'package:helmet_detector_app/widgets/live_camera_preview.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -234,27 +235,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         child: Column(
           children: [
             _buildPermissionText(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             SizedBox(
               height: MediaQuery.of(context).size.height * .5,
               width: MediaQuery.of(context).size.width * 1,
-              child: AspectRatio(
-                aspectRatio: cam.value.aspectRatio,
-                child: CameraPreview(cam),
-              ),
+              child: LiveCameraView(controller: _cam!),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             IconWithText(
               iconData: Icons.phone_android,
               text:
                   "Looking at Phone: ${_lastOutput?.label == "looking" ? "Yes" : "No"}",
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             IconWithText(
               iconData: Icons.motorcycle,
               text: 'Current Speed: ${_kmhCurrent.toStringAsFixed(2)} km/h',
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isServiceRunning
@@ -284,7 +282,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             ExpansionTile(
               leading: Icon(Icons.info, color: Colors.green),
               title: Text('Technical Data'),
