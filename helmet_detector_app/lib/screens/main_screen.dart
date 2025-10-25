@@ -165,7 +165,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       _speed.start();
       cam.resumePreview();
-      controlStreamer();
+      controlServices();
     }
   }
 
@@ -181,7 +181,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  void controlStreamer() {
+  void controlServices() {
     if (_isServiceRunning) {
       _speed.start();
       _streamer?.start();
@@ -267,7 +267,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
               onPressed: () {
                 _isServiceRunning = !_isServiceRunning;
-                controlStreamer();
+                controlServices();
               },
               icon: Icon(
                 !_isServiceRunning ? Icons.power_settings_new : Icons.pause,
