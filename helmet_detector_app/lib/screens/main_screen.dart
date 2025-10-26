@@ -362,7 +362,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       spacing: 8,
       children: [
         Text(
-          'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
+          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
         ),
         Text('Status: $_status'),
       ],
@@ -372,9 +372,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Widget _buildSpeedData() {
     return Column(
       children: [
-        Text('Speed: ${_kmhCurrent.toStringAsFixed(1)} km/h'),
         Text('Source: ${prettySource(_kmhSource)}'),
-        Text('GPS: ${prettyStatus(_speedStatus)}'),
+        Text('Status: ${prettyStatus(_speedStatus)}'),
       ],
     );
   }
