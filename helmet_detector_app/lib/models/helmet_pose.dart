@@ -9,17 +9,16 @@ class HelmetPose {
 
   final Interpreter _interpreter;
 
-  HelmetPose._(this._interpreter);
+  HelmetPose(this._interpreter);
 
   static Future<HelmetPose> load({
     String assetPath = 'assets/helmet_pose_fp16.tflite',
     int threads = 4,
   }) async {
-    final options = InterpreterOptions()
-      ..threads = threads
-      ..useNnApiForAndroid = true; // good default on Android 10+
+    final options = InterpreterOptions()..threads = threads;
+    options.useNnApiForAndroid = true;
     final itp = await Interpreter.fromAsset(assetPath, options: options);
-    return HelmetPose._(itp);
+    return HelmetPose(itp);
   }
 
   void close() => _interpreter.close();
@@ -158,3 +157,8 @@ class HelmetPose {
     return (label: HelmetPose.classes[predIdx], prob: prob);
   }
 }
+
+
+// ----------------------------------------------
+// Benchmark helper for HelmetPose
+// ----------------------------------------------

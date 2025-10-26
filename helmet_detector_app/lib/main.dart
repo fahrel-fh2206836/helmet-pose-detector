@@ -1,4 +1,6 @@
+
 import 'package:flutter/material.dart';
+import 'package:helmet_detector_app/benchmark/benchmark.dart';
 import 'package:helmet_detector_app/screens/main_screen.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
@@ -6,13 +8,16 @@ import 'package:helmet_detector_app/services/permission_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Benchmark
+  await testDelegates();
+
   // Centralized permission requests
   await PermissionService.requestAllPermissions();
 
   // Safe to init notifications (permission was requested already).
   await NotiService().initNotification();
 
-  runApp(const MyApp());
+  // runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -30,3 +35,5 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
+

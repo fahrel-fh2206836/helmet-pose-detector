@@ -87,6 +87,51 @@ class HelmetVideoClassifier {
     await stop();
     await _controller.close();
   }
+
+  /// ---- Helpers ----
+  /// Convert YUV420 (CameraImage) to a compressed RGB image (JPEG) that
+  /// HelmetPose.predict() can decode. We keep quality modest for speed.
+  Uint8List _cameraImageToJpeg(CameraImage image, {int jpegQuality = 80}) {
+    final w = image.width;
+    final h = image.height;
+
+    // Planes: Y, U, V
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+
+    final imgOut = img.Image(width: w, height: h);
+
+    final uvRowStride = uPlane.bytesPerRow;
+    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
+
+    // YUV420 -> RGB
+    // BT.601-ish conversion, clamped to [0,255]
+    int clamp(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);
+
+    for (int y = 0; y < h; y++) {
+      final int yRow = y * yPlane.bytesPerRow;
+      final int uvRow = (y >> 1) * uvRowStride;
+
+      for (int x = 0; x < w; x++) {
+        final int yIndex = yRow + x;
+        final int uvIndex = uvRow + (x >> 1) * uvPixelStride;
+
+        final int Y = yPlane.bytes[yIndex];
+        final int U = uPlane.bytes[uvIndex];
+        final int V = vPlane.bytes[uvIndex];
+
+        int r = Y + ((1436 * (V - 128)) >> 10);
+        int g = Y - ((46549 * (U - 128)) >> 17) - ((93604 * (V - 128)) >> 17);
+        int b = Y + ((1814 * (U - 128)) >> 10);
+
+        imgOut.setPixelRgba(x, y, clamp(r), clamp(g), clamp(b), 255);
+      }
+    }
+
+    // Compress to JPEG so HelmetPose.predict() can decode bytes.
+    return Uint8List.fromList(img.encodeJpg(imgOut, quality: jpegQuality));
+  }
 }
 
 /// --------- Packing for isolate (main isolate) ----------
