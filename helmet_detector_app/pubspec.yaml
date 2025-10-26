@@ -66,6 +66,8 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/helmet_pose_fp16.tflite
+    - assets/sample.png
+    - assets/helmet_pose_int8_float32_io.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

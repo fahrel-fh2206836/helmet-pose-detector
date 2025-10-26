@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:helmet_detector_app/screens/main_screen.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
+// import 'package:helmet_detector_app/benchmark/benchmark.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Benchmark (Uncomment when benchmarking)
+  // await testDelegates();
 
   // Centralized permission requests
   await PermissionService.requestAllPermissions();

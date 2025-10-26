@@ -9,6 +9,7 @@ import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
 import 'package:helmet_detector_app/services/speed_services.dart';
 import 'package:helmet_detector_app/widgets/icon_with_text.dart';
+import 'package:helmet_detector_app/widgets/live_camera_preview.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -116,8 +117,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
       await _cam!.initialize();
 
-      // Load your model (keeps helmet_pose.dart unchanged)
-      _pose = await HelmetPose.load();
+      // Load your model
+      _pose = await HelmetPose.load(
+        /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
+      );
 
       // Wire the video streamer that feeds predict(Uint8List)
       _streamer = HelmetVideoClassifier(
@@ -260,23 +263,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         child: Column(
           children: [
             _buildPermissionText(),
-            const SizedBox(height: 20),
-            AspectRatio(
-              aspectRatio: cam.value.aspectRatio,
-              child: CameraPreview(cam),
+            const SizedBox(height: 15),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * .5,
+              width: MediaQuery.of(context).size.width * 1,
+              child: LiveCameraView(controller: _cam!),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             IconWithText(
               iconData: Icons.phone_android,
               text:
                   "Looking at Phone: ${_lastOutput?.label == "looking" ? "Yes" : "No"}",
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             IconWithText(
               iconData: Icons.motorcycle,
               text: 'Current Speed: ${_kmhCurrent.toStringAsFixed(2)} km/h',
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isServiceRunning
@@ -306,7 +310,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
             ExpansionTile(
               leading: Icon(Icons.info, color: Colors.green),
               title: Text('Technical Data'),
@@ -360,7 +364,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       spacing: 8,
       children: [
         Text(
-          'Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
+          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
         ),
         Text('Status: $_status'),
       ],
@@ -370,9 +374,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Widget _buildSpeedData() {
     return Column(
       children: [
-        Text('Speed: ${_kmhCurrent.toStringAsFixed(1)} km/h'),
+        Text("Speed: $_kmhCurrent km/h"),
         Text('Source: ${prettySource(_kmhSource)}'),
-        Text('GPS: ${prettyStatus(_speedStatus)}'),
+        Text('Status: ${prettyStatus(_speedStatus)}'),
       ],
     );
   }
