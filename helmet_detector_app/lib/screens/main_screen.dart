@@ -117,8 +117,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
       await _cam!.initialize();
 
-      // Load your model (keeps helmet_pose.dart unchanged)
-      _pose = await HelmetPose.load();
+      // Load your model
+      _pose = await HelmetPose.load(
+        /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
+      );
 
       // Wire the video streamer that feeds predict(Uint8List)
       _streamer = HelmetVideoClassifier(
@@ -372,6 +374,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Widget _buildSpeedData() {
     return Column(
       children: [
+        Text("Speed: $_kmhCurrent km/h"),
         Text('Source: ${prettySource(_kmhSource)}'),
         Text('Status: ${prettyStatus(_speedStatus)}'),
       ],
