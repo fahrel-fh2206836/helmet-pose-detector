@@ -157,8 +157,3 @@ class HelmetPose {
     return (label: HelmetPose.classes[predIdx], prob: prob);
   }
 }
-
-
-// ----------------------------------------------
-// Benchmark helper for HelmetPose
-// ----------------------------------------------
