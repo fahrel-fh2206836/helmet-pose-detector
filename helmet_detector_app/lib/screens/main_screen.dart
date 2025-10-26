@@ -31,12 +31,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     windowSize: 5,
     emaAlpha: 0.35,
     maxAccuracyMeters: 25.0,
-    // You can tweak locationSettings here if you want:
-    // locationSettings: const LocationSettings(
-    //   accuracy: LocationAccuracy.bestForNavigation,
-    //   distanceFilter: 2,
-    // ),
   );
+
   StreamSubscription<double>? _speedSub;
   StreamSubscription<SpeedSource>? _srcSub;
   StreamSubscription<SpeedStatus>? _statSub;
@@ -47,12 +43,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   final _noti = NotiService();
 
-  static const double _probThreshold = 0.7; // model confidence for "looking"
+  static const double _probThreshold = 0.55; // model confidence for "looking"
   static const double _minSpeedForAlert = 5.0;
-  // static const Duration _cooldown = Duration(seconds: 10);
+  static const Duration _cooldown = Duration(seconds: 10);
 
   DateTime? _lookingSince; // when we first saw a qualifying "looking" state
-  // DateTime? _lastAlertAt; // last time we sent a warning
+  DateTime? _lastAlertAt; // last time we sent a warning
   Duration _requiredHold = const Duration(seconds: 6); // updated dynamically
 
   bool hasCameraPermission = false;
@@ -158,16 +154,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (isLooking) {
           _lookingSince ??= now;
           final heldFor = now.difference(_lookingSince!);
-          // final inCooldown =
-          //     _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
+          final inCooldown =
+              _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
 
-          if ( /*!inCooldown &&*/ heldFor >= _requiredHold) {
-            await _noti.showNotification(
-              title: 'Warning!',
-              body:
-                  'Detected: looking at phone at ${speed.toStringAsFixed(1)} km/h',
+          if (!inCooldown && heldFor >= _requiredHold) {
+            unawaited(
+              _noti.showNotification(
+                title: 'Warning!',
+                body:
+                    'Detected: looking at phone at ${speed.toStringAsFixed(1)} km/h',
+              )..catchError((e, st) {
+                debugPrint('⚠️ Notification failed: $e');
+                debugPrintStack(stackTrace: st);
+              }),
             );
-            // _lastAlertAt = now;
+            _lastAlertAt = now;
             _lookingSince = null; // require fresh hold after cooldown
           }
         } else {
@@ -364,7 +365,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       spacing: 8,
       children: [
         Text(
-          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? (_lastOutput!.prob * 100).toStringAsFixed(1) : "-"}%)',
+          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? _lastOutput!.prob * 100 : "-"}%)',
         ),
         Text('Status: $_status'),
       ],
