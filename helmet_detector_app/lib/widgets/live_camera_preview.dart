@@ -1,3 +1,4 @@
+// Camera widget configured aspect ratio from controller
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -9,7 +10,7 @@ class LiveCameraView extends StatelessWidget {
   Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: controller.value.aspectRatio,
-      child: CameraPreview(controller), // isolated from parent rebuilds
+      child: CameraPreview(controller),
     );
   }
 }

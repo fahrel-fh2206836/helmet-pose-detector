@@ -1,4 +1,5 @@
-// lib/screens/main_screen.dart
+// App's main/home screen
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
@@ -18,39 +19,49 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
-  CameraController? _cam;
-  HelmetPose? _pose;
-  HelmetVideoClassifier? _streamer;
+  // Object that controls camera configurations
+  CameraController? _camController;
 
+  // TFLite model wrapper and streaming classifier
+  HelmetPose? _model;
+  HelmetVideoClassifier? _streamer;
   StreamSubscription<({String label, double prob})>? _modelSub;
+
+  // UI status (e.g., "tracking") and last model output
   String _status = 'not_tracking';
   bool _isServiceRunning = true;
   ({String label, double prob})? _lastOutput;
 
+  // Smoothed speed pipeline
   final _speed = SpeedService(
     windowSize: 5,
-    emaAlpha: 0.35,
+    emaAlpha: 0.7,
     maxAccuracyMeters: 25.0,
   );
-
   StreamSubscription<double>? _speedSub;
   StreamSubscription<SpeedSource>? _srcSub;
   StreamSubscription<SpeedStatus>? _statSub;
 
+  // Latest speed + meta for debug panel
   double _kmhCurrent = 0.0;
   SpeedSource _kmhSource = SpeedSource.unknown;
   SpeedStatus _speedStatus = SpeedStatus.stopped;
 
+  // Local notification service
   final _noti = NotiService();
 
-  static const double _probThreshold = 0.55; // model confidence for "looking"
+  // Detection policy thresholds (model confidence, ignore slow speeds, cooldown between alerts).
+  static const double _probThreshold = 0.55;
   static const double _minSpeedForAlert = 5.0;
   static const Duration _cooldown = Duration(seconds: 10);
 
   DateTime? _lookingSince; // when we first saw a qualifying "looking" state
   DateTime? _lastAlertAt; // last time we sent a warning
-  Duration _requiredHold = const Duration(seconds: 6); // updated dynamically
+  Duration _requiredHold = const Duration(
+    seconds: 6,
+  ); // dynamic time based on speed
 
+  // Permission flags
   bool hasCameraPermission = false;
   bool hasNotiPermission = false;
   bool hasLocationPermission = false;
@@ -63,6 +74,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _bootstrap();
   }
 
+  // read & show current permission states
   void _permissionCheck() async {
     hasCameraPermission = await PermissionService.hasCameraPermission();
     hasNotiPermission = await PermissionService.hasNotificationPermission();
@@ -72,16 +84,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Map current speed to how long "looking" must be held before an alert
   Duration _holdTimeForSpeed(double kmh) {
-    // Your mapping:
-    // >= 50 km/h -> 2s, >=25 -> 4s, >=15 -> 6s, else default (e.g., 8s)
     if (kmh >= 50) return const Duration(seconds: 2);
     if (kmh >= 25) return const Duration(seconds: 4);
     if (kmh >= 15) return const Duration(seconds: 6);
-    return const Duration(seconds: 8); // between 5 and 14.9.
+    return const Duration(seconds: 8); // between 5 and <15
   }
 
+  // Starts speed + camera + model + subscriptions
   Future<void> _bootstrap() async {
+    // Starts speed tracking service and listeners to streams
     _speed.start();
     _speedSub = _speed.speedStream.listen((v) {
       if (!mounted) return;
@@ -99,35 +112,37 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     });
 
     try {
+      // Pick a front camera (fallback to first available)
       final cams = await availableCameras();
       final front = cams.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cams.first,
       );
 
-      _cam = CameraController(
+      // Configure camera (YUV → your isolate pipeline)
+      _camController = CameraController(
         front,
         ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
-      await _cam!.initialize();
+      await _camController!.initialize();
 
-      // Load your model
-      _pose = await HelmetPose.load(
+      // Load your model (Default: assets/helmet_pose_fp16.tflite)
+      _model = await HelmetPose.load(
         /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
       );
 
-      // Wire the video streamer that feeds predict(Uint8List)
+      // Streamer: pulls frames, preprocesses on isolate, runs model
       _streamer = HelmetVideoClassifier(
-        camera: _cam!,
-        model: _pose!,
+        camera: _camController!,
+        model: _model!,
         maxFps: 8, // tune per device
       );
 
       _streamer?.start();
 
-      // Subscribe to predictions: labels are "looking" / "not_looking"
+      // Subscribe to (label, prob)
       _modelSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
 
@@ -137,7 +152,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _status = 'tracking';
         });
 
-        // 2) Now do alert logic
+        // 2) Alert policy
         final now = DateTime.now();
         final speed = _kmhCurrent; // from SpeedService
         _requiredHold = _holdTimeForSpeed(speed);
@@ -157,6 +172,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           final inCooldown =
               _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
 
+          // Only notify if held long enough and not in cooldown
           if (!inCooldown && heldFor >= _requiredHold) {
             unawaited(
               _noti.showNotification(
@@ -172,7 +188,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             _lookingSince = null; // require fresh hold after cooldown
           }
         } else {
-          _lookingSince = null; // broke the "looking" streak
+          _lookingSince = null; // break the "looking" streak
         }
       });
     } catch (e) {
@@ -180,10 +196,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Handle app lifecycle so camera stream pauses/resumes cleanly
+  // Handle app lifecycle so camera stream pauses/resumes cleanly.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final cam = _cam;
+    final cam = _camController;
     if (cam == null || !cam.value.isInitialized) return;
 
     if (state == AppLifecycleState.inactive ||
@@ -198,6 +214,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Controls services based on state
   void controlServices() {
     if (_isServiceRunning) {
       _streamer?.start();
@@ -223,14 +240,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _statSub?.cancel();
     _modelSub?.cancel();
     _streamer?.dispose();
-    _cam?.dispose();
-    _pose?.close();
+    _camController?.dispose();
+    _model?.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cam = _cam;
+    final cam = _camController;
     if (cam == null || !cam.value.isInitialized) {
       return const Scaffold(
         body: Column(
@@ -268,7 +285,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             SizedBox(
               height: MediaQuery.of(context).size.height * .5,
               width: MediaQuery.of(context).size.width * 1,
-              child: LiveCameraView(controller: _cam!),
+              child: LiveCameraView(controller: _camController!),
             ),
             const SizedBox(height: 15),
             IconWithText(

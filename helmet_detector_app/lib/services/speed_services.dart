@@ -1,20 +1,20 @@
+/* 
+Smoothed speed tracking service with:
+  - sliding window (moving average)
+  - exponential smoothing (EMA)
+  - outlier rejection
+  - fallback delta-distance speed
+  - conservative IMU stub (fills short gaps only)
+*/
+
 import 'dart:async';
 import 'dart:math' as math;
-
 import 'package:geolocator/geolocator.dart';
 import 'package:helmet_detector_app/enum/common_enums.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
-
-
-/// Smoothed speed service with:
-///  - sliding window (moving average)
-///  - exponential smoothing (EMA)
-///  - outlier rejection
-///  - fallback delta-distance speed
-///  - conservative IMU stub (fills short gaps only)
 class SpeedService {
-  // ---- Public API ----
+  // Broadcasts values to listeners in the UI
   final _speedCtrl = StreamController<double>.broadcast();
   final _sourceCtrl = StreamController<SpeedSource>.broadcast();
   final _statusCtrl = StreamController<SpeedStatus>.broadcast();
@@ -23,12 +23,13 @@ class SpeedService {
   Stream<SpeedSource> get sourceStream => _sourceCtrl.stream;
   Stream<SpeedStatus> get statusStream => _statusCtrl.stream;
 
+  // Latest state for quick reads in the UI
   double latestKmh = 0.0;
   SpeedSource latestSource = SpeedSource.unknown;
   SpeedStatus status = SpeedStatus.stopped;
 
-  // ---- Config ----
-  final LocationSettings locationSettings;
+  // Configurations
+  final LocationSettings locationSettings; // GPS subscription settings
   final int windowSize; // sliding window length (e.g., 4–8)
   final double emaAlpha; // 0..1, higher = more reactive
   final double minValidKmh; // below this, treat as 0 km/h
@@ -40,7 +41,7 @@ class SpeedService {
     LocationSettings? locationSettings,
     this.windowSize = 5,
     this.emaAlpha = 0.35,
-    this.minValidKmh = 0.3, // ~0.08 m/s
+    this.minValidKmh = 0.3,
     this.maxJumpKmh = 80.0, // reject absurd single-sample jumps
     this.maxAccuracyMeters = 25.0, // drop poor accuracy fixes
     this.imuGapMax = const Duration(seconds: 2),
@@ -48,11 +49,11 @@ class SpeedService {
            locationSettings ??
            const LocationSettings(
              accuracy: LocationAccuracy.bestForNavigation,
-             distanceFilter: 2, // meters
+             distanceFilter: 2, // meters before next update
              timeLimit: null,
            );
 
-  // ---- Internals ----
+  // Internals subscriptions
   StreamSubscription<Position>? _gpsSub;
   StreamSubscription<AccelerometerEvent>? _accelSub;
   final List<double> _window = <double>[];
@@ -60,20 +61,24 @@ class SpeedService {
   DateTime? _lastFixAt;
   DateTime? _startedAt;
 
-  // IMU integration (very conservative)
-  // We keep a tiny running integral of forward acceleration magnitude.
-  // This is just a stub to keep UI responsive during <2s GPS gaps.
+  /* 
+  IMU integration (very conservative)
+  We keep a tiny running integral of forward acceleration magnitude.
+  This is just a stub to keep UI responsive during <2s GPS gaps.
+  */
   double _imuKmhEstimate = 0.0;
   DateTime? _imuStart;
 
-  // ---- Lifecycle ----
+  // Lifecycle (Start speed trakcing service)
   Future<void> start() async {
-    // Permissions & services
+    // Check if GPS service is enabled
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
       _setStatus(SpeedStatus.gpsUnavailable);
-      // still start IMU so UI can show something if desired
+      // We still proceed to start IMU so UI show something minimal
     }
+
+    // Check permissions
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied ||
         perm == LocationPermission.deniedForever) {
@@ -84,7 +89,7 @@ class SpeedService {
     _startedAt = DateTime.now();
     _setStatus(SpeedStatus.running);
 
-    // GPS stream
+    // Subscribe to GPS stream
     _gpsSub ??= Geolocator.getPositionStream(locationSettings: locationSettings)
         .listen(
           _onPosition,
@@ -92,13 +97,14 @@ class SpeedService {
               (_) {}, // keep silent; app can observe statusStream for issues
         );
 
-    // IMU stream (accelerometer)
+    // Subscribe to accelerometer (IMU) stream
     _accelSub ??= accelerometerEventStream().listen(_onAccel, onError: (_) {});
 
-    // Warm start
+    // Emit an initial value so UI can render immediately
     _emit(0.0, SpeedSource.unknown);
   }
 
+  // Stop speed tracking service to release resources
   Future<void> stop() async {
     await _gpsSub?.cancel();
     await _accelSub?.cancel();
@@ -111,6 +117,7 @@ class SpeedService {
     _setStatus(SpeedStatus.stopped);
   }
 
+  // Destroy speed tracking service controllers (Removes completely from widget tree)
   Future<void> dispose() async {
     await stop();
     await _speedCtrl.close();
@@ -118,17 +125,17 @@ class SpeedService {
     await _statusCtrl.close();
   }
 
-  // ---- Handlers ----
+  // Handlers
   void _onPosition(Position pos) {
     _lastFixAt = DateTime.now();
 
     // Reject poor accuracy fixes
-    final horizontalAcc = pos.accuracy; // meters (if provided by platform)
+    final horizontalAcc = pos.accuracy; // meters
     if (horizontalAcc.isFinite && horizontalAcc > maxAccuracyMeters) {
       return;
     }
 
-    // Primary: GPS velocity (m/s)
+    // Primary: use GPS-provided speed when available (m/s -> km/h)
     double? kmh;
     SpeedSource src = SpeedSource.gpsVelocity;
 
@@ -136,7 +143,7 @@ class SpeedService {
       kmh = pos.speed * 3.6;
     }
 
-    // Fallback: distance / dt
+    // Fallback: compute speed from distance / time between fixes
     if (kmh == null || kmh.isNaN) {
       final prev = _prevPos;
       if (prev != null && pos.timestamp != null && prev.timestamp != null) {
@@ -155,7 +162,7 @@ class SpeedService {
       }
     }
 
-    // If still null, keep last (do not emit). IMU may fill tiny gaps.
+    // If still no speed, stash pos and wait (IMU may fill tiny gaps)
     if (kmh == null || kmh.isNaN) {
       _prevPos = pos;
       return;
@@ -174,7 +181,7 @@ class SpeedService {
     _imuKmhEstimate = kmh;
     _imuStart = DateTime.now();
 
-    // Smooth and emit
+    // Smooth (window avg + EMA) and emit
     final smoothed = _smooth(kmh);
     _emit(smoothed, src);
 
@@ -182,22 +189,24 @@ class SpeedService {
   }
 
   void _onAccel(AccelerometerEvent e) {
-    // If no recent GPS (< imuGapMax), conservatively propagate IMU speed
+    // Only try IMU fill if the last GPS fix is recent enough
     final now = DateTime.now();
     if (_lastFixAt == null) return;
     final gap = now.difference(_lastFixAt!);
     if (gap > imuGapMax) return; // we don't trust longer IMU runs => drift
 
-    // Very rough magnitude-only integration (not frame-aligned, but ok for tiny gaps).
-    // NOTE: Without device orientation & gravity removal this is crude.
-    // Keep this conservative to avoid drift explosions.
+    /* 
+    Very rough magnitude-only integration (not frame-aligned, but ok for tiny gaps).
+    NOTE: Without device orientation & gravity removal this is crude.
+    Keep this conservative to avoid drift explosions.
+    */
     final dt = 1 / 50.0; // assume ~50 Hz average; sensors_plus varies by device
     final g = 9.80665;
     final ax = e.x, ay = e.y, az = e.z;
     final aMag =
         math.sqrt(ax * ax + ay * ay + az * az) - g; // naive gravity removal
 
-    // Integrate acceleration to velocity (m/s), then to km/h. Clamp to >=0.
+    //v = v + a * dt (in m/s) then to km/h. Clamp to >=0.
     final dvMs = aMag * dt;
     final vMs = math.max(0.0, (_imuKmhEstimate / 3.6) + dvMs);
     _imuKmhEstimate = vMs * 3.6;
@@ -215,19 +224,19 @@ class SpeedService {
     _emit(smoothed, SpeedSource.imuEstimate);
   }
 
-  // ---- Smoothing ----
+  // Smoothing (windowed avg + EMA)
   double _smooth(double kmh) {
     // Sliding window average
     _window.add(kmh);
     if (_window.length > windowSize) _window.removeAt(0);
     final avg = _window.reduce((a, b) => a + b) / _window.length;
 
-    // EMA on top
+    // Exponential moving average on top for extra smoothing
     final ema = (emaAlpha * avg) + ((1 - emaAlpha) * latestKmh);
     return ema;
   }
 
-  // ---- Emit helpers ----
+  // Emit helpers
   void _emit(double kmh, SpeedSource src) {
     latestKmh = kmh;
     latestSource = src;

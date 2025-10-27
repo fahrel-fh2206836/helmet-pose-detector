@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:helmet_detector_app/screens/main_screen.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
+
+// Uncomment to benchmark
 // import 'package:helmet_detector_app/benchmark/benchmark.dart';
+
+// Note: App currently working only on Android phones.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,10 +15,16 @@ void main() async {
   // Benchmark (Uncomment when benchmarking)
   // await testDelegates();
 
-  // Centralized permission requests
+  // Prevents Landscape orientation
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp, // Lock to upright portrait
+    DeviceOrientation.portraitDown, // Allow upside-down portrait
+  ]);
+
+  // Requests all necesary permissions
   await PermissionService.requestAllPermissions();
 
-  // Safe to init notifications (permission was requested already).
+  // Initializes notifcation services
   await NotiService().initNotification();
 
   runApp(const MyApp());

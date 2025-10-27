@@ -1,3 +1,4 @@
+// Reusable custom widget for having Icon and text within the same row.
 import 'package:flutter/material.dart';
 
 class IconWithText extends StatelessWidget {

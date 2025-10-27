@@ -1,9 +1,10 @@
 /// How the current value was produced (for debugging/telemetry).
 enum SpeedSource { gpsVelocity, gpsDelta, imuEstimate, unknown }
 
-/// Status of the tracker.
+/// Status of the speed tracker.
 enum SpeedStatus { stopped, running, gpsUnavailable, permissionDenied }
 
+// Retrieve String Value for source enum
 String prettySource(SpeedSource s) {
   switch (s) {
     case SpeedSource.gpsVelocity:
@@ -17,6 +18,7 @@ String prettySource(SpeedSource s) {
   }
 }
 
+// Retrieve String Value for speed tracking status enum
 String prettyStatus(SpeedStatus s) {
   switch (s) {
     case SpeedStatus.running:

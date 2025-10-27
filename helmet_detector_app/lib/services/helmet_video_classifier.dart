@@ -1,8 +1,10 @@
-// lib/services/helmet_video_classifier.dart
+// Service used to receive stream frames (images), preprocess and formatted into tensor input, ready for inferencing.
+// Heavy Preprocessing and formatting done on an isolate thread (background) to keep the UI Thread smooth.
+
 import 'dart:async';
 import 'dart:isolate';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart'; // compute()
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/helmet_pose.dart';
 
@@ -10,10 +12,12 @@ class HelmetVideoClassifier {
   final CameraController camera;
   final HelmetPose model;
 
+  // Broadcasts values of (label, prob) to listeners in the UI.
   final StreamController<({String label, double prob})> _controller =
       StreamController.broadcast();
   Stream<({String label, double prob})> get stream => _controller.stream;
 
+  // Max inference rate (frames per second)
   final int maxFps;
 
   HelmetVideoClassifier({
@@ -22,62 +26,78 @@ class HelmetVideoClassifier {
     this.maxFps = 8,
   });
 
-  bool _started = false;
-  bool _busy = false;
-  Timer? _ticker;
-  CameraImage? _latest;
-  bool _isNCHW = false; // read once from model
+  bool _started =
+      false; // Boolean whether service has started, prevents double starting.
+  bool _busy =
+      false; // Simple backpressure guard, prevent a frame from being processed if previous frame hasn't been fully processed.
+  Timer? _ticker; // Periodic trigger to run inference
+  CameraImage? _latest; // Newest camera frame (we keep only the latest)
+  bool _isNCHW = false; // cache model layout
 
+  // Start stream service
   Future<void> start() async {
     if (_started) return;
     _started = true;
 
-    // Read layout once (NCHW vs NHWC) from the model
-    _isNCHW = model.isNCHW; // uses your new getter
+    // Read model input layout only once (controls how we pack tensors)
+    _isNCHW = model.isNCHW;
 
+    // Ensure camera is ready
     if (!camera.value.isInitialized) {
       await camera.initialize();
     }
 
+    /* 
+    Begin receiving frames if not already. We only store the most recent frame
+    to avoid backlog; inference is rate-limited by _ticker.
+    */
     if (!camera.value.isStreamingImages) {
       await camera.startImageStream((CameraImage image) {
-        _latest = image; // cheap: only store the newest frame
+        _latest = image; // Store the newest frame
       });
     }
 
+    // Create a periodic timer that attempts inference at most `maxFps`
     final periodMs = (1000 / maxFps).floor();
     _ticker = Timer.periodic(Duration(milliseconds: periodMs), (_) async {
-      if (_busy) return;
+      if (_busy) return; // if previous run still executing, skip
       final imgNow = _latest;
-      if (imgNow == null) return;
+      if (imgNow == null) return; // nothing to process yet
       _busy = true;
 
       try {
         // Pack planes + metadata for isolate
         final message = _packForIsolate(imgNow, _isNCHW);
-        // Do all heavy work off the UI isolate (no JPEG)
+        // Do all heavy work off the UI isolate
         final Object inputNested = await compute<Map<String, dynamic>, Object>(
           _preprocessIsolate,
           message,
         );
 
         // Direct run on tensor (no decode/encode)
-        final res = await model.infer(inputNested);
+        final res = await model.runInference(inputNested);
+
+        // Emit the result to listeners if stream is still open
         if (!_controller.isClosed) _controller.add(res);
       } catch (_) {
-        // keep stream alive on errors
+        // Swallow errors to keep the stream alive
       } finally {
         _busy = false;
       }
     });
   }
 
+  // Stops stream service
   Future<void> stop() async {
     if (!_started) return;
     _started = false;
+
+    // Stop periodic trigger and clear last frame
     _ticker?.cancel();
     _ticker = null;
     _latest = null;
+
+    // Stop camera stream if active
     if (camera.value.isStreamingImages) {
       await camera.stopImageStream();
     }
@@ -89,11 +109,16 @@ class HelmetVideoClassifier {
   }
 }
 
-/// --------- Packing for isolate (main isolate) ----------
+/* 
+Packing for isolate (main isolate)
+Convert CameraImage (YUV420) planes into a compact message with raw bytes,
+strides, and layout flags. Uses TransferableTypedData for zero-copy transfer.
+*/
 Map<String, dynamic> _packForIsolate(CameraImage image, bool isNCHW) {
   final w = image.width;
   final h = image.height;
 
+  // YUV420: planes[0]=Y, [1]=U, [2]=V
   final yPlane = image.planes[0];
   final uPlane = image.planes[1];
   final vPlane = image.planes[2];
@@ -105,28 +130,34 @@ Map<String, dynamic> _packForIsolate(CameraImage image, bool isNCHW) {
     ..setRange(y.length, y.length + u.length, u)
     ..setRange(y.length + u.length, y.length + u.length + v.length, v);
 
+  // Wrap in TTD to avoid copying when sending to another isolate
   final ttd = TransferableTypedData.fromList([all]);
 
   return {
     'w': w,
     'h': h,
-    'yStride': yPlane.bytesPerRow,
-    'uStride': uPlane.bytesPerRow,
-    'vStride': vPlane.bytesPerRow,
-    'uPixStride': uPlane.bytesPerPixel ?? 1,
-    'vPixStride': vPlane.bytesPerPixel ?? 1,
-    'yLen': y.length,
+    'yStride': yPlane.bytesPerRow, // row stride for Y
+    'uStride': uPlane.bytesPerRow, // row stride for U
+    'vStride': vPlane.bytesPerRow, // row stride for V
+    'uPixStride': uPlane.bytesPerPixel ?? 1, // chroma pixel stride (often 2)
+    'vPixStride': vPlane.bytesPerPixel ?? 1, // chroma pixel stride
+    'yLen': y.length, // split points inside `all`
     'uLen': u.length,
-    'isNCHW': isNCHW, // drive layout of the nested list
-    'buffer': ttd,
+    'isNCHW': isNCHW, // controls tensor layout
+    'buffer': ttd, // transferred bytes
   };
 }
 
-/// --------- Heavy preprocessing (background isolate) ----------
-/// Returns `Object inputNested` matching interpreter layout:
-/// - if NCHW: [[c0(HxW), c1(HxW), c2(HxW)]]  // shape [1,3,300,300]
-/// - if NHWC: [ HxW x [r,g,b] ]              // shape [1,300,300,3]
+/* 
+Heavy preprocessing (background isolate)
+Converts YUV420 → RGB, resizes, crops, normalizes, and packs into nested
+Dart lists that match the interpreter's expected input shape.
+Returns `Object inputNested`:
+- NCHW: [[c0(HxW), c1(HxW), c2(HxW)]]    // shape [1,3,300,300]
+- NHWC: [ HxW x [r,g,b] ]   
+*/
 Object _preprocessIsolate(Map<String, dynamic> msg) {
+  // Unpack metadata
   final int srcW = msg['w'];
   final int srcH = msg['h'];
   final int yStride = msg['yStride'];
@@ -139,6 +170,7 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
   final bool isNCHW = msg['isNCHW'];
   final TransferableTypedData ttd = msg['buffer'] as TransferableTypedData;
 
+  // Recover concatenated YUV bytes and split them
   final Uint8List all = ttd.materialize().asUint8List();
   final Uint8List y = all.sublist(0, yLen);
   final Uint8List u = all.sublist(yLen, yLen + uLen);
@@ -158,15 +190,20 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
       final Y = y[yIdx];
       final U = u[uIdx];
       final V = v[vIdx];
+
+      // Integer YUV→RGB conversion (BT.601-ish), bit shifts for speed
       int r = Y + ((1436 * (V - 128)) >> 10);
       int g = Y - ((46549 * (U - 128)) >> 17) - ((93604 * (V - 128)) >> 17);
       int b = Y + ((1814 * (U - 128)) >> 10);
+
       rgb.setPixelRgba(col, row, clamp(r), clamp(g), clamp(b), 255);
     }
   }
 
-  // 2) resize to 320, 3) center-crop to 300x300 (same as your predict() path)
+  // 2) resize to 320
   var im320 = img.copyResize(rgb, width: 320, height: 320);
+
+  // 3) center-crop to 300x300 (same as your predict() path)
   final off = (320 - 300) >> 1;
   final im300 = img.copyCrop(im320, x: off, y: off, width: 300, height: 300);
 
@@ -176,6 +213,7 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
 
   if (isNCHW) {
     // [1, 3, 300, 300]
+    // Allocate 3 separate 2D arrays, one per channel (R, G, B).
     final c0 = List.generate(
       300,
       (_) => List<double>.filled(300, 0.0, growable: false),
@@ -191,6 +229,8 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
       (_) => List<double>.filled(300, 0.0, growable: false),
       growable: false,
     );
+
+    // Fill each channel with normalized float values.
     for (int y = 0; y < 300; y++) {
       for (int x = 0; x < 300; x++) {
         final p = im300.getPixel(x, y);
@@ -207,6 +247,7 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
     ];
   } else {
     // [1, 300, 300, 3]
+    // Allocate H×W×3 (per pixel: [R,G,B]).
     final hwc = List.generate(
       300,
       (_) => List.generate(
@@ -216,6 +257,8 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
       ),
       growable: false,
     );
+
+    // Fill HWC with normalized float values.
     for (int y = 0; y < 300; y++) {
       for (int x = 0; x < 300; x++) {
         final p = im300.getPixel(x, y);
