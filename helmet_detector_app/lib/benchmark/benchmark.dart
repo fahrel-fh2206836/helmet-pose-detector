@@ -14,17 +14,9 @@ Future<void> benchmarkHelmetPose({
 }) async {
   print('🔹 Benchmarking mode: $name');
 
-  final pose = await HelmetPose.load(assetPath: assetPath, threads: 4);
-
-  if (options != null) {
-    pose.close(); // close old interpreter
-    final itp = await Interpreter.fromAsset(assetPath, options: options);
-    final field = pose.runtimeType.toString();
-    final newPose = HelmetPose(itp);
-    return await _runBench(name, newPose, sampleImageBytes, runs);
-  }
-
-  await _runBench(name, pose, sampleImageBytes, runs);
+  final itp = await Interpreter.fromAsset(assetPath, options: options);
+  final newPose = HelmetPose(itp);
+  _runBench(name, newPose, sampleImageBytes, runs);
 }
 
 // Runs and Calculates the benchmarking metrics
@@ -66,7 +58,8 @@ Future<void> _runBench(
 Future<void> testDelegates() async {
   final bytes = await rootBundle.load('assets/sample.png');
   final imageBytes = bytes.buffer.asUint8List();
-  const modelPath = 'assets/helmet_pose_fp16.tflite';
+  // const modelPath = 'assets/helmet_pose_fp32io_fp16.tflite';
+  const modelPath = 'assets/helmet_pose_fp32.tflite';
 
   final xnnpackOpts = InterpreterOptions()
     ..threads = 4
@@ -86,6 +79,22 @@ Future<void> testDelegates() async {
     assetPath: modelPath,
     sampleImageBytes: imageBytes,
     options: nnapiOpts,
+  );
+
+  final gpuOpts = InterpreterOptions()
+    ..threads = 4
+    ..addDelegate(
+      GpuDelegateV2(
+        options: GpuDelegateOptionsV2(
+          isPrecisionLossAllowed: true, // enables FP16 path
+        ),
+      ),
+    );
+  await benchmarkHelmetPose(
+    name: 'GPUV2 delegate',
+    assetPath: modelPath,
+    sampleImageBytes: imageBytes,
+    options: gpuOpts,
   );
 
   final defaultOpts = InterpreterOptions()..threads = 4;
