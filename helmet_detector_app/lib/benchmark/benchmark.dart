@@ -1,4 +1,6 @@
 // Prepares the interpreter + model and benchmarks delegate latency (inference only)
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:image/image.dart' as img;
@@ -9,7 +11,7 @@ Future<void> benchmarkHelmetPose({
   required String assetPath,
   required Uint8List sampleImageBytes,
   InterpreterOptions? options,
-  int runs = 20,
+  int runs = 30,
   int warmup = 5,
 }) async {
   print('🔹 Benchmarking mode: $name');
@@ -18,8 +20,6 @@ Future<void> benchmarkHelmetPose({
   final itp = await Interpreter.fromAsset(assetPath, options: options);
   // Optional but good practice: force tensor allocation & shapes now
   itp.allocateTensors();
-
-  final pose = HelmetPose(itp);
 
   // Derive input shape/format from the interpreter (or from HelmetPose if you store it there)
   // Example assumes your model takes [1, H, W, 3] or [1, 3, H, W].
@@ -51,14 +51,14 @@ Future<void> benchmarkHelmetPose({
 
   // ---- Warmup (excluded from timing)
   for (int i = 0; i < warmup; i++) {
-    await pose.runInference(inputNested);
+    await runInference(inputNested, itp);
   }
 
   // ---- Timed runs
   final times = <double>[];
   for (int i = 0; i < runs; i++) {
     final sw = Stopwatch()..start();
-    await pose.runInference(inputNested);
+    await runInference(inputNested, itp);
     sw.stop();
     times.add(sw.elapsedMicroseconds / 1000.0);
   }
@@ -82,7 +82,39 @@ Future<void> benchmarkHelmetPose({
     '| FPS≈${fps.toStringAsFixed(1)}\n',
   );
 
-  pose.close();
+  itp.close();
+}
+
+Future<({String label, double prob})> runInference(
+  Object inputNested,
+  Interpreter interpreter,
+) async {
+  // Read output shape, e.g., [1,2]
+  final outShape = interpreter.getOutputTensor(0).shape;
+
+  // Allocate output based on the model's output shape.
+  final output = List.generate(
+    outShape[0],
+    (_) => List<double>.filled(outShape[1], 0.0, growable: false),
+    growable: false,
+  );
+
+  // Run the model with your prepared input and stores output in 'output' variable.
+  interpreter.run(inputNested, output);
+
+  // Read raw scores (logits) for 2 classes and compute stable softmax.
+  final a = output[0][0], b = output[0][1];
+  final m = math.max(a, b);
+  final ea = math.exp(a - m), eb = math.exp(b - m);
+  final s = ea + eb;
+
+  // prob for class 0 and 1, respectively.
+  final p0 = ea / s, p1 = eb / s;
+
+  // Pick the top class and output label + confidence.
+  final predIdx = p1 > p0 ? 1 : 0;
+  final prob = predIdx == 0 ? p0 : p1;
+  return (label: HelmetPose.classes[predIdx], prob: prob);
 }
 
 // Build the nested Dart list in exactly the shape the model expects.
@@ -167,7 +199,7 @@ Future<void> testDelegates() async {
   final bytes = await rootBundle.load('assets/sample.png');
   final imageBytes = bytes.buffer.asUint8List();
   // const modelPath = 'assets/helmet_pose_fp32io_fp16.tflite';
-  const modelPath = 'assets/helmet_pose_fp32io_fp16_nhwc.tflite';
+  const modelPath = 'assets/helmet_pose_fp32.tflite';
 
   // final xnnpackOpts = InterpreterOptions()
   //   ..threads = 4
@@ -181,25 +213,23 @@ Future<void> testDelegates() async {
   //   warmup: 5,
   // );
 
-  // final nnapiOpts = InterpreterOptions()
-  //   ..threads = 4
-  //   ..useNnApiForAndroid = true;
-  // await benchmarkHelmetPose(
-  //   name: 'NNAPI delegate',
-  //   assetPath: modelPath,
-  //   sampleImageBytes: imageBytes,
-  //   options: nnapiOpts,
-  //   runs: 30,
-  //   warmup: 5,
-  // );
+  final nnapiOpts = InterpreterOptions()..useNnApiForAndroid = true;
+  await benchmarkHelmetPose(
+    name: 'NNAPI delegate',
+    assetPath: modelPath,
+    sampleImageBytes: imageBytes,
+    options: nnapiOpts,
+    runs: 30,
+    warmup: 5,
+  );
 
-  // final defaultOpts = InterpreterOptions()..threads = 4;
-  // await benchmarkHelmetPose(
-  //   name: 'Default',
-  //   assetPath: modelPath,
-  //   sampleImageBytes: imageBytes,
-  //   options: defaultOpts,
-  //   runs: 30,
-  //   warmup: 5,
-  // );
+  //   final defaultOpts = InterpreterOptions()..threads = 4;
+  //   await benchmarkHelmetPose(
+  //     name: 'Basic CPU',
+  //     assetPath: modelPath,
+  //     sampleImageBytes: imageBytes,
+  //     options: defaultOpts,
+  //     runs: 30,
+  //     warmup: 5,
+  //   );
 }

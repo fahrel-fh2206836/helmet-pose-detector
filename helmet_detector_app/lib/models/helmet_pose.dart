@@ -20,7 +20,7 @@ class HelmetPose {
     String assetPath = 'assets/helmet_pose_fp32io_fp16.tflite',
     int threads = 4,
   }) async {
-    final options = InterpreterOptions()..threads = threads;
+    final options = InterpreterOptions();
     options.useNnApiForAndroid = true;
     final itp = await Interpreter.fromAsset(assetPath, options: options);
     return HelmetPose(itp);
