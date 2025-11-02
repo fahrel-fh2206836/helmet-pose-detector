@@ -23,6 +23,7 @@ Future<void> runBenchmarkSuiteIsolated({
   List<int> threads = const [1, 2, 3, 4, 6, 8],
   int runs = 30,
   int warmup = 5,
+  String selectDelegate = 'XNNPACK',
 }) async {
   // Prepare assets on MAIN isolate
   final modelAPath = await _copyAssetToTemp(modelAAsset);
@@ -43,10 +44,12 @@ Future<void> runBenchmarkSuiteIsolated({
       threads: threads,
       runs: runs,
       warmup: warmup,
+      selectDelegate: selectDelegate,
     );
   });
 
   print(markdown);
+  print("Benchmark Completed for $selectDelegate");
 }
 
 /// Copy a bundled asset to a temp file so we can open it in the worker isolate.
@@ -294,6 +297,7 @@ Future<String> _workerBenchmarkSuite({
   required List<int> threads,
   required int runs,
   required int warmup,
+  required String selectDelegate,
 }) async {
   final Map<String, Map<int?, Map<String, _BenchStats>>> store = {
     'XNNPACK': {},
@@ -306,84 +310,88 @@ Future<String> _workerBenchmarkSuite({
       (threads.map((t) => (t.clamp(1, cpuCount) as int)).toSet().toList()
         ..sort());
 
-  // // XNNPACK sweep
-  // for (final t in clampedThreads) {
-  //   final a = await _safeRunOne(
-  //     modelPath: modelAPath,
-  //     imageBytes: imageBytes,
-  //     options: _optsXnn(t),
-  //     runs: runs,
-  //     warmup: warmup,
-  //     debugTag: 'XNNPACK/$t $modelALabel',
-  //   );
-  //   final b = await _safeRunOne(
-  //     modelPath: modelBPath,
-  //     imageBytes: imageBytes,
-  //     options: _optsXnn(t),
-  //     runs: runs,
-  //     warmup: warmup,
-  //     debugTag: 'XNNPACK/$t $modelBLabel',
-  //   );
-  //   if (a != null || b != null) {
-  //     store['XNNPACK']![t] = {
-  //       if (a != null) modelALabel: a,
-  //       if (b != null) modelBLabel: b,
-  //     };
-  //   }
-  // }
-
-  // // CPU sweep
-  // for (final t in clampedThreads) {
-  //   final a = await _safeRunOne(
-  //     modelPath: modelAPath,
-  //     imageBytes: imageBytes,
-  //     options: _optsCpu(t),
-  //     runs: runs,
-  //     warmup: warmup,
-  //     debugTag: 'CPU/$t $modelALabel',
-  //   );
-  //   final b = await _safeRunOne(
-  //     modelPath: modelBPath,
-  //     imageBytes: imageBytes,
-  //     options: _optsCpu(t),
-  //     runs: runs,
-  //     warmup: warmup,
-  //     debugTag: 'CPU/$t $modelBLabel',
-  //   );
-  //   if (a != null || b != null) {
-  //     store['CPU']![t] = {
-  //       if (a != null) modelALabel: a,
-  //       if (b != null) modelBLabel: b,
-  //     };
-  //   }
-  // }
-
+  // XNNPACK sweep
+  if (selectDelegate == "XNNPACK") {
+    for (final t in clampedThreads) {
+      final a = await _safeRunOne(
+        modelPath: modelAPath,
+        imageBytes: imageBytes,
+        options: _optsXnn(t),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'XNNPACK/$t $modelALabel',
+      );
+      final b = await _safeRunOne(
+        modelPath: modelBPath,
+        imageBytes: imageBytes,
+        options: _optsXnn(t),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'XNNPACK/$t $modelBLabel',
+      );
+      if (a != null || b != null) {
+        store['XNNPACK']![t] = {
+          if (a != null) modelALabel: a,
+          if (b != null) modelBLabel: b,
+        };
+      }
+    }
+  }
+  // CPU sweep
+  else if (selectDelegate == "CPU") {
+    for (final t in clampedThreads) {
+      final a = await _safeRunOne(
+        modelPath: modelAPath,
+        imageBytes: imageBytes,
+        options: _optsCpu(t),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'CPU/$t $modelALabel',
+      );
+      final b = await _safeRunOne(
+        modelPath: modelBPath,
+        imageBytes: imageBytes,
+        options: _optsCpu(t),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'CPU/$t $modelBLabel',
+      );
+      if (a != null || b != null) {
+        store['CPU']![t] = {
+          if (a != null) modelALabel: a,
+          if (b != null) modelBLabel: b,
+        };
+      }
+    }
+  }
   // NNAPI (best-effort)
-  _BenchStats? aN;
-  _BenchStats? bN;
-  try {
-    aN = await _safeRunOne(
-      modelPath: modelAPath,
-      imageBytes: imageBytes,
-      options: _optsNnapi(),
-      runs: runs,
-      warmup: warmup,
-      debugTag: 'NNAPI $modelALabel',
-    );
-    bN = await _safeRunOne(
-      modelPath: modelBPath,
-      imageBytes: imageBytes,
-      options: _optsNnapi(),
-      runs: runs,
-      warmup: warmup,
-      debugTag: 'NNAPI $modelBLabel',
-    );
-  } catch (_) {}
-  if (aN != null || bN != null) {
-    store['NNAPI']![null] = {
-      if (aN != null) modelALabel: aN,
-      if (bN != null) modelBLabel: bN,
-    };
+  else if (selectDelegate == "NNAPI") {
+    _BenchStats? aN;
+    _BenchStats? bN;
+    try {
+      aN = await _safeRunOne(
+        modelPath: modelAPath,
+        imageBytes: imageBytes,
+        options: _optsNnapi(),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'NNAPI $modelALabel',
+      );
+      bN = await _safeRunOne(
+        modelPath: modelBPath,
+        imageBytes: imageBytes,
+        options: _optsNnapi(),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'NNAPI $modelBLabel',
+      );
+    } catch (_) {}
+    if (aN != null || bN != null) {
+      store['NNAPI']![null] = {
+        if (aN != null) modelALabel: aN,
+        if (bN != null) modelBLabel: bN,
+      };
+    }
   }
 
   String cell(_BenchStats? s) => s == null ? "N/A" : s.toCell();
@@ -398,38 +406,40 @@ Future<String> _workerBenchmarkSuite({
       "|:-------------|:-----------:|:----------------------------------------------------------|:-----------------------------------------------------------|",
     );
 
-  void rows(String delegate) {
-    final entries = store[delegate]!;
-    final keys =
-        entries.keys
-            .where((k) => k != null && entries[k]!.isNotEmpty)
-            .cast<int>()
-            .toList()
-          ..sort();
-    for (final t in keys) {
-      final a = entries[t]?[modelALabel];
-      final b = entries[t]?[modelBLabel];
-      buf.writeln("| **$delegate** | $t | ${cell(a)} | ${cell(b)} |");
+  if (selectDelegate == "XNNPACK" || selectDelegate == "CPU") {
+    void rows(String delegate) {
+      final entries = store[delegate]!;
+      final keys =
+          entries.keys
+              .where((k) => k != null && entries[k]!.isNotEmpty)
+              .cast<int>()
+              .toList()
+            ..sort();
+      for (final t in keys) {
+        final a = entries[t]?[modelALabel];
+        final b = entries[t]?[modelBLabel];
+        buf.writeln("| **$delegate** | $t | ${cell(a)} | ${cell(b)} |");
+      }
+    }
+
+    if (selectDelegate == "XNNPACK") rows('XNNPACK');
+    if (selectDelegate == "CPU") rows('CPU');
+  } else if (selectDelegate == "NNAPI") {
+    if (store['NNAPI']![null] != null && store['NNAPI']![null]!.isNotEmpty) {
+      final aL = store['NNAPI']![null]?[modelALabel];
+      final bL = store['NNAPI']![null]?[modelBLabel];
+      buf.writeln("| **NNAPI** | – | ${cell(aL)} | ${cell(bL)} |");
     }
   }
 
-  // rows('XNNPACK');
-  // rows('CPU');
-
-  if (store['NNAPI']![null] != null && store['NNAPI']![null]!.isNotEmpty) {
-    final aL = store['NNAPI']![null]?[modelALabel];
-    final bL = store['NNAPI']![null]?[modelBLabel];
-    buf.writeln("| **NNAPI** | – | ${cell(aL)} | ${cell(bL)} |");
-  }
-
-  final clampedThreadList = clampedThreads.join(', ');
-  buf
-    ..writeln()
-    ..writeln(
-      "**Notes:** Runs=$runs, Warmup=$warmup. "
-      "XNNPACK/CPU use threads=$clampedThreadList (clamped to $cpuCount cores). "
-      "NNAPI ignores threads and is shown last.",
-    );
+  // final clampedThreadList = clampedThreads.join(', ');
+  // buf
+  //   ..writeln()
+  //   ..writeln(
+  //     "**Notes:** Runs=$runs, Warmup=$warmup. "
+  //     "XNNPACK/CPU use threads=$clampedThreadList (clamped to $cpuCount cores). "
+  //     "NNAPI ignores threads and is shown last.",
+  //   );
 
   return buf.toString();
 }
