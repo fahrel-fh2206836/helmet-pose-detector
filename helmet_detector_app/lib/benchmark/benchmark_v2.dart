@@ -91,6 +91,16 @@ InterpreterOptions _optsCpu(int threads) => (InterpreterOptions()
   ..useNnApiForAndroid = false);
 InterpreterOptions _optsNnapi() =>
     (InterpreterOptions()..useNnApiForAndroid = true);
+InterpreterOptions _optsGpu() {
+  final gpu = GpuDelegateV2(
+    options: GpuDelegateOptionsV2(
+      isPrecisionLossAllowed: true, // enables FP16 on GPU
+    ),
+  );
+  return (InterpreterOptions()
+    ..addDelegate(gpu)
+    ..useNnApiForAndroid = false);
+}
 
 double _percentile(List<double> sorted, double q) {
   final n = sorted.length;
@@ -303,6 +313,7 @@ Future<String> _workerBenchmarkSuite({
     'XNNPACK': {},
     'CPU': {},
     'NNAPI': {},
+    'GPU': {},
   };
 
   final int cpuCount = Platform.numberOfProcessors;
@@ -394,6 +405,35 @@ Future<String> _workerBenchmarkSuite({
     }
   }
 
+  if (selectDelegate == "GPU") {
+    _BenchStats? aG;
+    _BenchStats? bG;
+    try {
+      aG = await _safeRunOne(
+        modelPath: modelAPath,
+        imageBytes: imageBytes,
+        options: _optsGpu(),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'GPU $modelALabel',
+      );
+      bG = await _safeRunOne(
+        modelPath: modelBPath,
+        imageBytes: imageBytes,
+        options: _optsGpu(),
+        runs: runs,
+        warmup: warmup,
+        debugTag: 'GPU $modelBLabel',
+      );
+    } catch (_) {}
+    if (aG != null || bG != null) {
+      store['GPU']![null] = {
+        if (aG != null) modelALabel: aG,
+        if (bG != null) modelBLabel: bG,
+      };
+    }
+  }
+
   String cell(_BenchStats? s) => s == null ? "N/A" : s.toCell();
 
   final buf = StringBuffer()
@@ -429,6 +469,12 @@ Future<String> _workerBenchmarkSuite({
       final aL = store['NNAPI']![null]?[modelALabel];
       final bL = store['NNAPI']![null]?[modelBLabel];
       buf.writeln("| **NNAPI** | – | ${cell(aL)} | ${cell(bL)} |");
+    }
+  } else if (selectDelegate == "GPU") {
+    if (store['GPU']![null] != null && store['GPU']![null]!.isNotEmpty) {
+      final aL = store['GPU']![null]?[modelALabel];
+      final bL = store['GPU']![null]?[modelBLabel];
+      buf.writeln("| **GPU** | – | ${cell(aL)} | ${cell(bL)} |");
     }
   }
 
