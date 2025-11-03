@@ -50,4 +50,10 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    
+    // ✅ TFLite GPU delegate (Kotlin DSL syntax)
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+
+    // (Often also present via tflite_flutter, but harmless to add explicitly)
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
 }

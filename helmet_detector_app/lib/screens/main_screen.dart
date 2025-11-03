@@ -1,430 +1,400 @@
+// App's main/home screen
+
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/enum/common_enums.dart';
+import 'package:helmet_detector_app/models/helmet_pose.dart';
+import 'package:helmet_detector_app/services/helmet_video_classifier.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
-import 'package:helmet_detector_app/util/image_utils.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:helmet_detector_app/services/permission_service.dart';
+import 'package:helmet_detector_app/services/speed_services.dart';
+import 'package:helmet_detector_app/widgets/icon_with_text.dart';
+import 'package:helmet_detector_app/widgets/live_camera_preview.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  bool _processingFrame = false;
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
+  // Object that controls camera configurations
+  CameraController? _camController;
 
-  // Whether the AI model is activated and for how long
-  bool _isActivated = false;
-  Timer? _activationTimer;
-  int _secondsElapsed = 0;
+  // TFLite model wrapper and streaming classifier
+  HelmetPose? _model;
+  HelmetVideoClassifier? _streamer;
+  StreamSubscription<({String label, double prob})>? _modelSub;
 
-  // Current speed of the user
-  double _currentSpeed = 0;
+  // UI status (e.g., "tracking") and last model output
+  String _status = 'not_tracking';
+  bool _isServiceRunning = true;
+  ({String label, double prob})? _lastOutput;
 
-  // Camera controller and permission check for the camera
-  CameraController? _cameraController;
-  bool _cameraPermissionGranted = false;
+  // Smoothed speed pipeline
+  final _speed = SpeedService(
+    windowSize: 5,
+    emaAlpha: 0.7,
+    maxAccuracyMeters: 25.0,
+  );
+  StreamSubscription<double>? _speedSub;
+  StreamSubscription<SpeedSource>? _srcSub;
+  StreamSubscription<SpeedStatus>? _statSub;
 
-  // Whether the user is wearing a helmet
-  bool helmetDetected = false;
+  // Latest speed + meta for debug panel
+  double _kmhCurrent = 0.0;
+  SpeedSource _kmhSource = SpeedSource.unknown;
+  SpeedStatus _speedStatus = SpeedStatus.stopped;
 
-  // Whether the user is looking at their phone
-  bool isLooking = false;
+  // Local notification service
+  final _noti = NotiService();
 
-  // Models for helmet and looking detection
-  Interpreter? _helmetModel;
-  Interpreter? _lookingModel;
+  // Detection policy thresholds (model confidence, ignore slow speeds, cooldown between alerts).
+  static const double _probThreshold = 0.55;
+  static const double _minSpeedForAlert = 5.0;
+  static const Duration _cooldown = Duration(seconds: 10);
 
-  // Tracks how long the user has been looking at their phone
-  Timer? _lookingTimer;
-  int _lookingSeconds = 0;
+  DateTime? _lookingSince; // when we first saw a qualifying "looking" state
+  DateTime? _lastAlertAt; // last time we sent a warning
+  Duration _requiredHold = const Duration(
+    seconds: 6,
+  ); // dynamic time based on speed
 
-  // Thresholds for looking at phone based on speed
-  int? _lookingThresholds;
-  Timer? _thresholdUpdater;
-
-  // Cooldown period after an alert to prevent spamming
-  bool _isInCooldown = false;
-  Timer? _cooldownTimer;
+  // Permission flags
+  bool hasCameraPermission = false;
+  bool hasNotiPermission = false;
+  bool hasLocationPermission = false;
 
   @override
   void initState() {
     super.initState();
-    _startThresholdUpdater();
-    _loadModels();
-    _startTracking();
-    _checkCameraPermissionAndInitialize();
+    WidgetsBinding.instance.addObserver(this);
+    _permissionCheck();
+    _bootstrap();
+  }
+
+  // read & show current permission states
+  void _permissionCheck() async {
+    hasCameraPermission = await PermissionService.hasCameraPermission();
+    hasNotiPermission = await PermissionService.hasNotificationPermission();
+    hasLocationPermission = await PermissionService.hasLocationPermission();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // Map current speed to how long "looking" must be held before an alert
+  Duration _holdTimeForSpeed(double kmh) {
+    if (kmh >= 50) return const Duration(seconds: 2);
+    if (kmh >= 25) return const Duration(seconds: 4);
+    if (kmh >= 15) return const Duration(seconds: 6);
+    return const Duration(seconds: 8); // between 5 and <15
+  }
+
+  // Starts speed + camera + model + subscriptions
+  Future<void> _bootstrap() async {
+    // Starts speed tracking service and listeners to streams
+    _speed.start();
+    _speedSub = _speed.speedStream.listen((v) {
+      if (!mounted) return;
+      setState(() => _kmhCurrent = v);
+    });
+
+    _srcSub = _speed.sourceStream.listen((s) {
+      if (!mounted) return;
+      setState(() => _kmhSource = s);
+    });
+
+    _statSub = _speed.statusStream.listen((s) {
+      if (!mounted) return;
+      setState(() => _speedStatus = s);
+    });
+
+    try {
+      // Pick a front camera (fallback to first available)
+      final cams = await availableCameras();
+      final front = cams.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cams.first,
+      );
+
+      // Configure camera (YUV → your isolate pipeline)
+      _camController = CameraController(
+        front,
+        ResolutionPreset.low,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+      await _camController!.initialize();
+
+      // Load your model (Default: assets/helmet_pose_fp16.tflite)
+      _model = await HelmetPose.load(
+        /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
+      );
+
+      // Streamer: pulls frames, preprocesses on isolate, runs model
+      _streamer = HelmetVideoClassifier(
+        camera: _camController!,
+        model: _model!,
+        maxFps: 8, // tune per device
+      );
+
+      _streamer?.start();
+
+      // Subscribe to (label, prob)
+      _modelSub = _streamer!.stream.listen((res) async {
+        if (!mounted) return;
+
+        // 1) Always update UI first so it reflects the latest model output
+        setState(() {
+          _lastOutput = res; // shows label + prob in your UI
+          _status = 'tracking';
+        });
+
+        // 2) Alert policy
+        final now = DateTime.now();
+        final speed = _kmhCurrent; // from SpeedService
+        _requiredHold = _holdTimeForSpeed(speed);
+
+        final bool isLooking =
+            (res.label == 'looking') && (res.prob >= _probThreshold);
+
+        // Skip alerts entirely when speed < 5 km/h (but UI already updated above)
+        if (speed < _minSpeedForAlert) {
+          _lookingSince = null; // reset any hold
+          return;
+        }
+
+        if (isLooking) {
+          _lookingSince ??= now;
+          final heldFor = now.difference(_lookingSince!);
+          final inCooldown =
+              _lastAlertAt != null && now.difference(_lastAlertAt!) < _cooldown;
+
+          // Only notify if held long enough and not in cooldown
+          if (!inCooldown && heldFor >= _requiredHold) {
+            unawaited(
+              _noti.showNotification(
+                title: 'Warning!',
+                body:
+                    'Detected: looking at phone at ${speed.toStringAsFixed(1)} km/h',
+              )..catchError((e, st) {
+                debugPrint('⚠️ Notification failed: $e');
+                debugPrintStack(stackTrace: st);
+              }),
+            );
+            _lastAlertAt = now;
+            _lookingSince = null; // require fresh hold after cooldown
+          }
+        } else {
+          _lookingSince = null; // break the "looking" streak
+        }
+      });
+    } catch (e) {
+      setState(() => _status = 'Error: $e');
+    }
+  }
+
+  // Handle app lifecycle so camera stream pauses/resumes cleanly.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final cam = _camController;
+    if (cam == null || !cam.value.isInitialized) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _speed.stop();
+      _streamer?.stop();
+      cam.pausePreview();
+    } else if (state == AppLifecycleState.resumed) {
+      _speed.start();
+      cam.resumePreview();
+      controlServices();
+    }
+  }
+
+  // Controls services based on state
+  void controlServices() {
+    if (_isServiceRunning) {
+      _streamer?.start();
+      _speed.start();
+      setState(() {
+        _status = "tracking";
+      });
+    } else {
+      _streamer?.stop();
+      _speed.stop();
+      setState(() {
+        _status = "not_tracking";
+      });
+    }
   }
 
   @override
   void dispose() {
-    _cameraController?.dispose();
-    _helmetModel?.close();
-    _lookingModel?.close();
-    _lookingTimer?.cancel();
-    _thresholdUpdater?.cancel();
-    _cooldownTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _speedSub?.cancel();
+    _speed.dispose();
+    _srcSub?.cancel();
+    _statSub?.cancel();
+    _modelSub?.cancel();
+    _streamer?.dispose();
+    _camController?.dispose();
+    _model?.close();
     super.dispose();
   }
 
-  // ========================= CAMERA FUNCTIONS =========================
-
-  // Checks if the camera permission is granted and initializes the camera
-  Future<void> _checkCameraPermissionAndInitialize() async {
-    final status = await Permission.camera.status;
-    if (status.isGranted) {
-      _cameraPermissionGranted = true;
-      await _initializeCamera();
-    } else {
-      setState(() {
-        _cameraPermissionGranted = false;
-      });
-    }
-  }
-
-  // Initializes the camera
-  Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    final frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-    );
-
-    _cameraController = CameraController(
-      frontCamera,
-      ResolutionPreset.medium,
-      enableAudio: false,
-    );
-
-    await _cameraController!.initialize();
-
-    _cameraController!.startImageStream((CameraImage image) async {
-      if (!mounted) return;
-
-      // 👇 Drop frames if we’re still processing the previous one
-      if (_processingFrame) return;
-      _processingFrame = true;
-
-      try {
-        if (_isActivated) {
-          // await _runModelPipeline(image);
-
-          if (isLooking && !_isInCooldown) {
-            _lookingTimer ??= Timer.periodic(const Duration(seconds: 1), (
-              timer,
-            ) async {
-              _lookingSeconds++;
-
-              if (_lookingThresholds != null &&
-                  _lookingSeconds >= _lookingThresholds!) {
-                await NotiService().showNotification(
-                  title: 'Warning',
-                  body: 'FOCUS ON DRIVING!',
-                );
-
-                // Start cooldown after alert
-                _isInCooldown = true;
-                _cooldownTimer?.cancel();
-                _cooldownTimer = Timer(const Duration(seconds: 10), () {
-                  _isInCooldown = false;
-                });
-
-                resetLookingTimer();
-              }
-            });
-          } else {
-            resetLookingTimer();
-          }
-        }
-      } finally {
-        _processingFrame = false;
-      }
-    });
-
-    setState(() {});
-  }
-
-  // ========================= MODEL FUNCTIONS (DETECTION) =========================
-
-  Future<void> _loadModels() async {
-    // _helmetModel = await Interpreter.fromAsset('assets/yolov8s.tflite');
-    // _lookingModel = await Interpreter.fromAsset('looking_cnn.tflite');
-  }
-
-  Future<void> _runModelPipeline(CameraImage image) async {
-    final helmetResult = await runHelmetDetection(image);
-    setState(() {
-      helmetDetected = helmetResult;
-    });
-
-    // if (helmetDetected) {
-    //   final lookResult = await runLookingClassification(image);
-    //   setState(() {
-    //     isLooking = lookResult;
-    //   });
-    // }
-  }
-
-  Future<bool> runHelmetDetection(CameraImage image) async {
-    final Float32List input = await CameraImageUtils.preprocessCameraImage(
-      image,
-    );
-    final outputTensor = _helmetModel!.getOutputTensor(0);
-    final outputShape = outputTensor.shape; // [1, 6, 3549]
-    final int valuesPerPrediction = outputShape[1];
-    final int numPredictions = outputShape[2];
-    final int outputLength = valuesPerPrediction * numPredictions;
-
-    final outputBuffer = Float32List(outputLength);
-
-    _helmetModel!.run(
-      input.buffer.asUint8List(),
-      outputBuffer.buffer.asUint8List(),
-    );
-
-    for (int i = 0; i < numPredictions; i++) {
-      final double objectness = outputBuffer[4 * numPredictions + i];
-      final double classScore = outputBuffer[5 * numPredictions + i];
-      final double confidence = objectness * classScore;
-      if (confidence > 0.5) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  Future<bool> runLookingClassification(CameraImage image) async {
-    final Float32List input = await CameraImageUtils.preprocessCameraImage(
-      image,
-      targetSize: 300,
-    );
-
-    final outputTensor = _lookingModel!.getOutputTensor(0);
-    final outputShape = outputTensor.shape;
-
-    final outputBuffer = Float32List(outputShape.reduce((a, b) => a * b));
-    _lookingModel!.run(
-      input.buffer.asUint8List(),
-      outputBuffer.buffer.asUint8List(),
-    );
-
-    final scores = outputBuffer;
-    final maxScoreIndex = scores.indexOf(
-      scores.reduce((a, b) => a > b ? a : b),
-    );
-
-    return maxScoreIndex == 1;
-  }
-
-  // Updates the looking thresholds based on the current speed
-  void _startThresholdUpdater() {
-    _thresholdUpdater?.cancel();
-    _thresholdUpdater = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        if (_currentSpeed >= 50) {
-          _lookingThresholds = 2;
-        } else if (_currentSpeed >= 25) {
-          _lookingThresholds = 4;
-        } else if (_currentSpeed >= 15) {
-          _lookingThresholds = 6;
-        } else {
-          _lookingThresholds = null; // No alert if speed is too low
-        }
-      });
-    });
-  }
-
-  // ========================= SPEED TRACKING FUNCTIONS =========================
-
-  Future<void> _startTracking() async {
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((Position position) {
-      if (!mounted) return;
-      setState(() {
-        _currentSpeed = (position.speed) * 3.6;
-      });
-    });
-  }
-
-  // ========================= TIMER FUNCTIONS =========================
-
-  void _startTimer() {
-    _secondsElapsed = 0;
-    _activationTimer?.cancel();
-    _activationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _secondsElapsed++;
-      });
-    });
-  }
-
-  void _stopTimer() {
-    _activationTimer?.cancel();
-    _secondsElapsed = 0;
-    resetLookingTimer();
-  }
-
-  void resetLookingTimer() {
-    _lookingTimer?.cancel();
-    _lookingTimer = null;
-    _lookingSeconds = 0;
-  }
-
-  // ========================= BUILD WIDGETS =========================
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16.0),
-                child: Text(
-                  'RideSafe',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
+    final cam = _camController;
+    if (cam == null || !cam.value.isInitialized) {
+      return const Scaffold(
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 20),
+            Align(
+              alignment: Alignment.center,
+              child: Text(
+                "Taking too long?\nEnsure that camera permission is granted.\nOtherwise, grant permission and restart the app.",
               ),
-              const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Please allow all the permissions that has been asked in order for the app to function properly',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (_cameraController != null &&
-                  _cameraController!.value.isInitialized)
-                SizedBox(
-                  width: 300,
-                  height: 300,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: CameraPreview(_cameraController!),
-                  ),
-                )
-              else if (!_cameraPermissionGranted)
-                const SizedBox(
-                  width: 300,
-                  height: 300,
-                  child: Center(
-                    child: Text(
-                      'Camera permission is required and restart once permission is given.',
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(
-                  width: 300,
-                  height: 300,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: 200,
-                height: 50,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isActivated
-                        ? const Color(0xFF12EB66)
-                        : Colors.grey,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isActivated = !_isActivated;
-
-                      if (_isActivated) {
-                        _startTimer();
-                      } else {
-                        _stopTimer();
-                        helmetDetected = false;
-                        isLooking = false;
-                      }
-                    });
-                  },
-                  icon: Icon(
-                    !_isActivated ? Icons.power_settings_new : Icons.pause,
-                  ),
-                  label: Text(
-                    _isActivated ? 'Deactivate AI' : 'Activate AI',
-                    style: TextStyle(fontSize: 18),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.timer, color: Colors.green),
-                  SizedBox(width: 20),
-                  Text(
-                    _isActivated
-                        ? 'Tracking for $_secondsElapsed seconds'
-                        : 'Currently Not Tracking',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 30),
-              _buildSpeedWidget(),
-              const SizedBox(height: 20),
-              Text(
-                "Helmet Detected: ${helmetDetected ? "Yes" : "No"}",
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Looking at Phone: ${isLooking ? "Yes" : "No"}",
-                style: const TextStyle(fontSize: 18),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.info), label: ''),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'RideSafe',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        actions: [
+          Padding(padding: const EdgeInsets.all(8.0), child: Text("ver. 1.0")),
         ],
-        onTap: (index) {},
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildPermissionText(),
+            const SizedBox(height: 15),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * .5,
+              width: MediaQuery.of(context).size.width * 1,
+              child: LiveCameraView(controller: _camController!),
+            ),
+            const SizedBox(height: 15),
+            IconWithText(
+              iconData: Icons.phone_android,
+              text:
+                  "Looking at Phone: ${_lastOutput?.label == "looking" ? "Yes" : "No"}",
+            ),
+            const SizedBox(height: 15),
+            IconWithText(
+              iconData: Icons.motorcycle,
+              text: 'Current Speed: ${_kmhCurrent.toStringAsFixed(2)} km/h',
+            ),
+            const SizedBox(height: 15),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isServiceRunning
+                    ? const Color(0xFF12EB66)
+                    : Colors.grey,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              onPressed: () {
+                _isServiceRunning = !_isServiceRunning;
+                controlServices();
+              },
+              icon: Icon(
+                !_isServiceRunning ? Icons.power_settings_new : Icons.pause,
+              ),
+              label: Text(
+                _isServiceRunning
+                    ? 'Deactivate Detection'
+                    : 'Activate Detection',
+                style: TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 15),
+            ExpansionTile(
+              leading: Icon(Icons.info, color: Colors.green),
+              title: Text('Technical Data'),
+              subtitle: Text('Tap to expand debugs'),
+              children: [
+                Text("Model Result & Status"),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: _buildModelData(),
+                ),
+                const SizedBox(height: 8),
+                Text("Speed Data"),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.green),
+                  ),
+                  child: _buildSpeedData(),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSpeedWidget() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildPermissionText() {
+    return Column(
       children: [
-        const Icon(Icons.motorcycle, color: Colors.green),
-        const SizedBox(width: 8),
         Text(
-          'Current Speed: ${_currentSpeed.toStringAsFixed(2)} km/h',
-          style: const TextStyle(fontSize: 16),
+          'Please allow all the permissions that has been asked in order for the app to function properly:',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16),
         ),
+        SizedBox(height: 5),
+        Text("Location: ${hasLocationPermission ? "Yes" : "No"}"),
+        Text("Notification: ${hasNotiPermission ? "Yes" : "No"}"),
+        Text("Camera: ${hasCameraPermission ? "Yes" : "No"}"),
+      ],
+    );
+  }
+
+  Widget _buildModelData() {
+    return Column(
+      spacing: 8,
+      children: [
+        Text(
+          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? _lastOutput!.prob * 100 : "-"}%)',
+        ),
+        Text('Status: $_status'),
+      ],
+    );
+  }
+
+  Widget _buildSpeedData() {
+    return Column(
+      children: [
+        Text("Speed: $_kmhCurrent km/h"),
+        Text('Source: ${prettySource(_kmhSource)}'),
+        Text('Status: ${prettyStatus(_speedStatus)}'),
       ],
     );
   }

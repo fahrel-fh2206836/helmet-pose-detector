@@ -1,4 +1,5 @@
-// lib/services/permission_service.dart
+// Centralized Permission services
+
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -7,19 +8,18 @@ class PermissionService {
   static Future<void> requestAllPermissions() async {
     await _handleLocation();
     await _handleNotifications();
-    // Camera is also requested contextually in MainScreen,
-    // but we can pre-request here to streamline onboarding.
     await _handleCamera();
   }
 
+  // Handles location permission
   static Future<void> _handleLocation() async {
     var status = await Geolocator.checkPermission();
     if (status == LocationPermission.denied) {
       await Geolocator.requestPermission();
     }
-    // (Optionally) handle deniedForever via Geolocator.openAppSettings()
   }
 
+  // Handles notification permission
   static Future<void> _handleNotifications() async {
     final status = await Permission.notification.status;
     if (status.isDenied) {
@@ -27,10 +27,21 @@ class PermissionService {
     }
   }
 
+  // Handles camera permission
   static Future<void> _handleCamera() async {
     final status = await Permission.camera.status;
     if (status.isDenied) {
       await Permission.camera.request();
     }
   }
+
+  // Static methods to check a certain permission
+
+  static Future<bool> hasCameraPermission() async =>
+      await Permission.camera.status.isGranted;
+  static Future<bool> hasNotificationPermission() async =>
+      await Permission.notification.status.isGranted;
+  static Future<bool> hasLocationPermission() async =>
+      await Geolocator.checkPermission() == LocationPermission.always ||
+      await Geolocator.checkPermission() == LocationPermission.whileInUse;
 }
