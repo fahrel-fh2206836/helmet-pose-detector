@@ -131,13 +131,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Load your model (Default: assets/helmet_pose_fp16.tflite)
       _model = await HelmetPose.load(
         /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
+        threads: 6,
       );
 
       // Streamer: pulls frames, preprocesses on isolate, runs model
       _streamer = HelmetVideoClassifier(
         camera: _camController!,
         model: _model!,
-        maxFps: 8, // tune per device
+        maxFps: 5, // tune per device
       );
 
       _streamer?.start();
