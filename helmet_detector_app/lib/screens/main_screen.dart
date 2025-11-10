@@ -91,9 +91,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return const Duration(seconds: 8); // between 5 and <15
   }
 
-  // Starts speed + camera + model + subscriptions
+  // camera + model + subscriptions
   Future<void> _bootstrap() async {
-    // Starts speed tracking service and listeners to streams
+    // listeners to speed streams
     _speedSub = _speed.speedStream.listen((v) {
       if (!mounted) return;
       setState(() => _kmhCurrent = v);
@@ -264,7 +264,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ),
         centerTitle: true,
         actions: [
-          Padding(padding: const EdgeInsets.all(8.0), child: Text("ver. 1.0")),
+          Padding(padding: const EdgeInsets.all(8.0), child: Text("ver. 1.0.0")),
         ],
       ),
       body: SingleChildScrollView(
