@@ -29,7 +29,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   // UI status (e.g., "tracking") and last model output
   String _status = 'not_tracking';
-  bool _isServiceRunning = true;
+  bool _isServiceRunning = false;
   ({String label, double prob})? _lastOutput;
 
   // Smoothed speed pipeline
@@ -95,7 +95,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Starts speed + camera + model + subscriptions
   Future<void> _bootstrap() async {
     // Starts speed tracking service and listeners to streams
-    _speed.start();
     _speedSub = _speed.speedStream.listen((v) {
       if (!mounted) return;
       setState(() => _kmhCurrent = v);
@@ -141,8 +140,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         maxFps: 5, // tune per device
       );
 
-      _streamer?.start();
-
       // Subscribe to (label, prob)
       _modelSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
@@ -150,7 +147,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // 1) Always update UI first so it reflects the latest model output
         setState(() {
           _lastOutput = res; // shows label + prob in your UI
-          _status = 'tracking';
         });
 
         // 2) Alert policy
@@ -180,10 +176,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 title: 'Warning!',
                 body:
                     'Detected: looking at phone at ${speed.toStringAsFixed(1)} km/h',
-              )..catchError((e, st) {
-                debugPrint('⚠️ Notification failed: $e');
-                debugPrintStack(stackTrace: st);
-              }),
+              )..catchError((e, st) {}),
             );
             _lastAlertAt = now;
             _lookingSince = null; // require fresh hold after cooldown
@@ -191,6 +184,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         } else {
           _lookingSince = null; // break the "looking" streak
         }
+      });
+      setState(() {
+        /*Quick Refresh*/
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
@@ -218,7 +214,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Controls services based on state
   void controlServices() {
     if (_isServiceRunning) {
-      _streamer?.start();
+      // _streamer?.start();
       _speed.start();
       setState(() {
         _status = "tracking";
@@ -248,8 +244,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final cam = _camController;
-    if (cam == null || !cam.value.isInitialized) {
+    if (_camController == null || !_camController!.value.isInitialized) {
       return const Scaffold(
         body: Column(
           mainAxisAlignment: MainAxisAlignment.center,
