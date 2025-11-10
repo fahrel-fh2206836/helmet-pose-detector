@@ -128,7 +128,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
       // Load your model (Default: assets/helmet_pose_fp16.tflite)
       _model = await HelmetPose.load(
-        /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
+        assetPath: 'assets/mobilenet_fp32io_fp16.tflite',
         threads: 6,
       );
 
@@ -264,7 +264,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         ),
         centerTitle: true,
         actions: [
-          Padding(padding: const EdgeInsets.all(8.0), child: Text("ver. 1.0.0")),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text("ver. 1.0.0"),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -273,7 +276,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             _buildPermissionText(),
             const SizedBox(height: 15),
             SizedBox(
-              height: MediaQuery.of(context).size.height * .5,
+              height: MediaQuery.of(context).size.height * .4,
               width: MediaQuery.of(context).size.width * 1,
               child: LiveCameraView(controller: _camController!),
             ),

@@ -121,9 +121,9 @@ Object _buildInput({
   if (im == null) {
     throw StateError("Unsupported image data.");
   }
-  im = img.copyResize(im, width: 320, height: 320);
-  final off = (320 - W) ~/ 2;
-  im = img.copyCrop(im, x: off, y: off, width: W, height: H);
+  im = img.copyResize(im, width: W, height: H);
+  // final off = (320 - W) ~/ 2;
+  // im = img.copyCrop(im, x: off, y: off, width: W, height: H);
 
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];

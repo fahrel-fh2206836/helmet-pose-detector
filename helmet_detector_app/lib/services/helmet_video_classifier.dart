@@ -197,7 +197,6 @@ Future<({String label, double prob})> _preprocessIsolate(
       final U = u[uIdx];
       final V = v[vIdx];
 
-      // Integer YUV→RGB conversion (BT.601-ish), bit shifts for speed
       int r = Y + ((1436 * (V - 128)) >> 10);
       int g = Y - ((46549 * (U - 128)) >> 17) - ((93604 * (V - 128)) >> 17);
       int b = Y + ((1814 * (U - 128)) >> 10);
@@ -206,42 +205,37 @@ Future<({String label, double prob})> _preprocessIsolate(
     }
   }
 
-  // 2) resize to 320
-  var im320 = img.copyResize(rgb, width: 320, height: 320);
+  // 2) resize directly to 224x224  (no extra crop step)
+  const int size = 224;
+  final im224 = img.copyResize(rgb, width: size, height: size);
 
-  // 3) center-crop to 300x300 (same as your predict() path)
-  final off = (320 - 300) >> 1;
-  final im300 = img.copyCrop(im320, x: off, y: off, width: 300, height: 300);
-
-  // 4) normalize with PyTorch mean/std and build nested list to match layout
+  // 3) normalize with PyTorch mean/std and build nested list to match layout
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];
 
   Object inputNested;
 
   if (isNCHW) {
-    // [1, 3, 300, 300]
-    // Allocate 3 separate 2D arrays, one per channel (R, G, B).
+    // [1, 3, 224, 224]
     final c0 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      size,
+      (_) => List<double>.filled(size, 0.0, growable: false),
       growable: false,
     );
     final c1 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      size,
+      (_) => List<double>.filled(size, 0.0, growable: false),
       growable: false,
     );
     final c2 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      size,
+      (_) => List<double>.filled(size, 0.0, growable: false),
       growable: false,
     );
 
-    // Fill each channel with normalized float values.
-    for (int y = 0; y < 300; y++) {
-      for (int x = 0; x < 300; x++) {
-        final p = im300.getPixel(x, y);
+    for (int y = 0; y < size; y++) {
+      for (int x = 0; x < size; x++) {
+        final p = im224.getPixel(x, y);
         final r = ((p.r) / 255.0 - mean[0]) / std[0];
         final g = ((p.g) / 255.0 - mean[1]) / std[1];
         final b = ((p.b) / 255.0 - mean[2]) / std[2];
@@ -254,22 +248,20 @@ Future<({String label, double prob})> _preprocessIsolate(
       [c0, c1, c2],
     ];
   } else {
-    // [1, 300, 300, 3]
-    // Allocate H×W×3 (per pixel: [R,G,B]).
+    // [1, 224, 224, 3]
     final hwc = List.generate(
-      300,
+      size,
       (_) => List.generate(
-        300,
+        size,
         (_) => List<double>.filled(3, 0.0, growable: false),
         growable: false,
       ),
       growable: false,
     );
 
-    // Fill HWC with normalized float values.
-    for (int y = 0; y < 300; y++) {
-      for (int x = 0; x < 300; x++) {
-        final p = im300.getPixel(x, y);
+    for (int y = 0; y < size; y++) {
+      for (int x = 0; x < size; x++) {
+        final p = im224.getPixel(x, y);
         final r = ((p.r) / 255.0 - mean[0]) / std[0];
         final g = ((p.g) / 255.0 - mean[1]) / std[1];
         final b = ((p.b) / 255.0 - mean[2]) / std[2];
@@ -281,6 +273,5 @@ Future<({String label, double prob})> _preprocessIsolate(
     inputNested = [hwc];
   }
 
-  // Direct run on tensor (no decode/encode)
   return await model.runInference(inputNested);
 }
