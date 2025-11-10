@@ -71,7 +71,6 @@ flutter:
     - assets/helmet_pose_fp32.tflite
     - assets/mobilenet_fp32io_fp16.tflite
     - assets/mobilenet_fp32.tflite
-    - assets/mobilenet_int8_fp32io.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

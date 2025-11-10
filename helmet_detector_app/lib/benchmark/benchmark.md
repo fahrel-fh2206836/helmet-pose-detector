@@ -1,14 +1,13 @@
 # 🧠 Device Specifications
 
-| **Parameter**                 | **Samsung Galaxy S24+** | **Samsung Galaxy A52**   |
-| :---------------------------- | :---------------------- | :----------------------- |
-| **SoC / Chipset**             | Samsung Exynos 2400     | Qualcomm Snapdragon 720G |
-| **CPU Architecture**          | ARMv8                   | ARMv8                    |
-| **Cores**                     | 10 Cores                | 8 Cores                  |
-| **Clock Speeds (GHz)**        | 0.4 - 3.2               | 0.3 - 2.3                |
-| **RAM (Size)**                | 12 GB                   | 8 GB                     |
-| **Android Version**           | 16                      | 14                       |
-| **Battery Saver During Test** | Off                     | Off                      |
+| **Parameter**                 | **Samsung Galaxy S24+** | **Samsung Galaxy A52**   | **Infinix NOTE 40 Pro+ 5G** |
+| :---------------------------- | :---------------------- | :----------------------- | :-------------------------- |
+| **SoC / Chipset**             | Samsung Exynos 2400     | Qualcomm Snapdragon 720G | MediaTek Dimensity 7020     |
+| **CPU Architecture**          | ARMv8                   | ARMv8                    | ARMv8                       |
+| **Cores**                     | 10 Cores                | 8 Cores                  | 8 Cores                     |
+| **Clock Speeds (GHz)**        | 0.4 - 3.2               | 0.3 - 2.3                | 0.5 - 2.2                   |
+| **RAM (Size)**                | 12 GB                   | 8 GB                     | 12 GB                       |
+| **Android Version**           | 16                      | 14                       | 15                          |
 
 <br><br>
 
@@ -24,6 +23,7 @@
 | Threads Tested     | 1, 2, 3, 4, 6, 8                            |
 | Delegates Tested   | XNNPACK, NNAPI, Basic CPU                   |
 | Metric Definitions | Avg, Min, Median, P90, Max, FPS             |
+| Battery Saver      | Off                                         |
 
 <br><br>
 
