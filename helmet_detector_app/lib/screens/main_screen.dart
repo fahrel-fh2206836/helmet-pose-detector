@@ -30,7 +30,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // UI status (e.g., "tracking") and last model output
   String _status = 'not_tracking';
   bool _isServiceRunning = false;
-  ({String label, double prob})? _lastOutput;
 
   // Smoothed speed pipeline
   final _speed = SpeedService(
@@ -144,11 +143,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _modelSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
 
-        // 1) Always update UI first so it reflects the latest model output
-        setState(() {
-          _lastOutput = res; // shows label + prob in your UI
-        });
-
         // 2) Alert policy
         final now = DateTime.now();
         final speed = _kmhCurrent; // from SpeedService
@@ -214,7 +208,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Controls services based on state
   void controlServices() {
     if (_isServiceRunning) {
-      // _streamer?.start();
+      _streamer?.start();
       _speed.start();
       setState(() {
         _status = "tracking";
@@ -284,10 +278,24 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               child: LiveCameraView(controller: _camController!),
             ),
             const SizedBox(height: 15),
-            IconWithText(
-              iconData: Icons.phone_android,
-              text:
-                  "Looking at Phone: ${_lastOutput?.label == "looking" ? "Yes" : "No"}",
+            StreamBuilder<({String label, double prob})>(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const IconWithText(
+                    iconData: Icons.phone_android,
+                    text: "Looking at Phone: —",
+                  );
+                }
+
+                final res = snapshot.data!;
+                final isLooking = res.label == "looking";
+
+                return IconWithText(
+                  iconData: Icons.phone_android,
+                  text: "Looking at Phone: ${isLooking ? "Yes" : "No"}",
+                );
+              },
             ),
             const SizedBox(height: 15),
             IconWithText(
@@ -374,14 +382,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildModelData() {
-    return Column(
-      spacing: 8,
-      children: [
-        Text(
-          'Last Output: ${_lastOutput != null ? _lastOutput!.label : "-"} (${_lastOutput != null ? _lastOutput!.prob * 100 : "-"}%)',
-        ),
-        Text('Status: $_status'),
-      ],
+    return StreamBuilder<({String label, double prob})>(
+      stream: _streamer?.stream,
+      builder: (context, snapshot) {
+        final hasData = snapshot.hasData && snapshot.data != null;
+        final label = hasData ? snapshot.data!.label : "-";
+        final prob = hasData
+            ? (snapshot.data!.prob * 100).toStringAsFixed(1)
+            : "-";
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text('Last Output: $label ($prob%)'),
+            Text('Status: $_status'),
+          ],
+        );
+      },
     );
   }
 
