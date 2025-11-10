@@ -67,15 +67,13 @@ class HelmetVideoClassifier {
 
       try {
         // Pack planes + metadata for isolate
-        final message = _packForIsolate(imgNow, _isNCHW);
+        final message = _packForIsolate(imgNow, _isNCHW, model);
         // Do all heavy work off the UI isolate
-        final Object inputNested = await compute<Map<String, dynamic>, Object>(
-          _preprocessIsolate,
-          message,
-        );
-
-        // Direct run on tensor (no decode/encode)
-        final res = await model.runInference(inputNested);
+        final res =
+            await compute<Map<String, dynamic>, ({String label, double prob})>(
+              _preprocessIsolate,
+              message,
+            );
 
         // Emit the result to listeners if stream is still open
         if (!_controller.isClosed) _controller.add(res);
@@ -114,7 +112,11 @@ Packing for isolate (main isolate)
 Convert CameraImage (YUV420) planes into a compact message with raw bytes,
 strides, and layout flags. Uses TransferableTypedData for zero-copy transfer.
 */
-Map<String, dynamic> _packForIsolate(CameraImage image, bool isNCHW) {
+Map<String, dynamic> _packForIsolate(
+  CameraImage image,
+  bool isNCHW,
+  HelmetPose model,
+) {
   final w = image.width;
   final h = image.height;
 
@@ -145,6 +147,7 @@ Map<String, dynamic> _packForIsolate(CameraImage image, bool isNCHW) {
     'uLen': u.length,
     'isNCHW': isNCHW, // controls tensor layout
     'buffer': ttd, // transferred bytes
+    'model': model,
   };
 }
 
@@ -156,7 +159,9 @@ Returns `Object inputNested`:
 - NCHW: [[c0(HxW), c1(HxW), c2(HxW)]]    // shape [1,3,300,300]
 - NHWC: [ HxW x [r,g,b] ]   
 */
-Object _preprocessIsolate(Map<String, dynamic> msg) {
+Future<({String label, double prob})> _preprocessIsolate(
+  Map<String, dynamic> msg,
+) async {
   // Unpack metadata
   final int srcW = msg['w'];
   final int srcH = msg['h'];
@@ -169,6 +174,7 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
   final int uLen = msg['uLen'];
   final bool isNCHW = msg['isNCHW'];
   final TransferableTypedData ttd = msg['buffer'] as TransferableTypedData;
+  final HelmetPose model = msg['model'];
 
   // Recover concatenated YUV bytes and split them
   final Uint8List all = ttd.materialize().asUint8List();
@@ -211,6 +217,8 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];
 
+  Object inputNested;
+
   if (isNCHW) {
     // [1, 3, 300, 300]
     // Allocate 3 separate 2D arrays, one per channel (R, G, B).
@@ -242,7 +250,7 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
         c2[y][x] = b;
       }
     }
-    return [
+    inputNested = [
       [c0, c1, c2],
     ];
   } else {
@@ -270,6 +278,9 @@ Object _preprocessIsolate(Map<String, dynamic> msg) {
         hwc[y][x][2] = b;
       }
     }
-    return [hwc];
+    inputNested = [hwc];
   }
+
+  // Direct run on tensor (no decode/encode)
+  return await model.runInference(inputNested);
 }
