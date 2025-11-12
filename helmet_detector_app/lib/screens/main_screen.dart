@@ -34,7 +34,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Smoothed speed pipeline
   final _speed = SpeedService(
     windowSize: 5,
-    emaAlpha: 0.7,
+    emaAlpha: 0.35,
     maxAccuracyMeters: 25.0,
   );
   StreamSubscription<double>? _speedSub;
@@ -50,7 +50,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final _noti = NotiService();
 
   // Detection policy thresholds (model confidence, ignore slow speeds, cooldown between alerts).
-  static const double _probThreshold = 0.55;
+  static const double _probThreshold = 0.5;
   static const double _minSpeedForAlert = 5.0;
   static const Duration _cooldown = Duration(seconds: 10);
 
