@@ -9,11 +9,7 @@ import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:image/image.dart' as img;
 
-Map<String, dynamic> packForIsolate(
-  CameraImage image,
-  bool isNCHW,
-  HelmetPose model,
-) {
+Map<String, dynamic> packForIsolate(CameraImage image, HelmetPose model) {
   final w = image.width;
   final h = image.height;
 
@@ -42,7 +38,6 @@ Map<String, dynamic> packForIsolate(
     'vPixStride': vPlane.bytesPerPixel ?? 1, // chroma pixel stride
     'yLen': y.length, // split points inside `all`
     'uLen': u.length,
-    'isNCHW': isNCHW, // controls tensor layout
     'buffer': ttd, // transferred bytes
     'model': model,
   };
@@ -69,9 +64,13 @@ Future<({String label, double prob})> preprocessIsolate(
   final int vPixStride = msg['vPixStride'];
   final int yLen = msg['yLen'];
   final int uLen = msg['uLen'];
-  final bool isNCHW = msg['isNCHW'];
   final TransferableTypedData ttd = msg['buffer'] as TransferableTypedData;
   final HelmetPose model = msg['model'];
+
+  // Read model input layout only once (controls how we pack tensors)
+  final isNCHW = model.isNCHW;
+  final height = model.modelHeight;
+  final width = model.modelWidth;
 
   // Recover concatenated YUV bytes and split them
   final Uint8List all = ttd.materialize().asUint8List();
@@ -103,12 +102,17 @@ Future<({String label, double prob})> preprocessIsolate(
     }
   }
 
-  // 2) resize to 320
-  var im320 = img.copyResize(rgb, width: 320, height: 320);
+  final img.Image im;
+  if (height == 300 && width == 300) {
+    // 2) resize to 320
+    var im320 = img.copyResize(rgb, width: 320, height: 320);
 
-  // 3) center-crop to 300x300 (same as your predict() path)
-  final off = (320 - 300) >> 1;
-  final im300 = img.copyCrop(im320, x: off, y: off, width: 300, height: 300);
+    // 3) center-crop to 300x300 (same as your predict() path)
+    final off = (320 - height) >> 1;
+    im = img.copyCrop(im320, x: off, y: off, width: width, height: height);
+  } else {
+    im = img.copyResize(rgb, width: width, height: height);
+  }
 
   // 4) normalize with PyTorch mean/std and build nested list to match layout
   const mean = [0.485, 0.456, 0.406];
@@ -120,25 +124,25 @@ Future<({String label, double prob})> preprocessIsolate(
     // [1, 3, 300, 300]
     // Allocate 3 separate 2D arrays, one per channel (R, G, B).
     final c0 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      height,
+      (_) => List<double>.filled(width, 0.0, growable: false),
       growable: false,
     );
     final c1 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      height,
+      (_) => List<double>.filled(width, 0.0, growable: false),
       growable: false,
     );
     final c2 = List.generate(
-      300,
-      (_) => List<double>.filled(300, 0.0, growable: false),
+      height,
+      (_) => List<double>.filled(width, 0.0, growable: false),
       growable: false,
     );
 
     // Fill each channel with normalized float values.
-    for (int y = 0; y < 300; y++) {
-      for (int x = 0; x < 300; x++) {
-        final p = im300.getPixel(x, y);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final p = im.getPixel(x, y);
         final r = ((p.r) / 255.0 - mean[0]) / std[0];
         final g = ((p.g) / 255.0 - mean[1]) / std[1];
         final b = ((p.b) / 255.0 - mean[2]) / std[2];
@@ -154,9 +158,9 @@ Future<({String label, double prob})> preprocessIsolate(
     // [1, 300, 300, 3]
     // Allocate H×W×3 (per pixel: [R,G,B]).
     final hwc = List.generate(
-      300,
+      height,
       (_) => List.generate(
-        300,
+        width,
         (_) => List<double>.filled(3, 0.0, growable: false),
         growable: false,
       ),
@@ -164,9 +168,9 @@ Future<({String label, double prob})> preprocessIsolate(
     );
 
     // Fill HWC with normalized float values.
-    for (int y = 0; y < 300; y++) {
-      for (int x = 0; x < 300; x++) {
-        final p = im300.getPixel(x, y);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final p = im.getPixel(x, y);
         final r = ((p.r) / 255.0 - mean[0]) / std[0];
         final g = ((p.g) / 255.0 - mean[1]) / std[1];
         final b = ((p.b) / 255.0 - mean[2]) / std[2];

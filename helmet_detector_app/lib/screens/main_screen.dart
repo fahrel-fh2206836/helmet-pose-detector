@@ -126,10 +126,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
       await _camController!.initialize();
 
-      // Load your model (Default: assets/helmet_pose_fp16.tflite)
+      // Load your model
       _model = await HelmetPose.load(
-        /*assetPath: 'assets/helmet_pose_int8_float32_io.tflite'*/
-        threads: 6,
+        assetPath: 'assets/mobilenet_fp32io_fp16.tflite',
+        threads: 2,
       );
 
       // Streamer: pulls frames, preprocesses on isolate, runs model

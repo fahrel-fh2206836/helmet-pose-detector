@@ -14,10 +14,12 @@ class HelmetPose {
 
   // Initialize and loads interpreter with AI model (tflite from assets) with NNAPI and threads configurations
   static Future<HelmetPose> load({
-    String assetPath = 'assets/helmet_pose_fp32io_fp16.tflite',
+    String assetPath = 'assets/effNetB3_fp32io_fp16.tflite',
     int threads = 4,
   }) async {
-    final options = InterpreterOptions()..threads = threads;
+    final options = InterpreterOptions()
+      ..threads = threads
+      ..addDelegate(XNNPackDelegate());
     final itp = await Interpreter.fromAsset(assetPath, options: options);
     return HelmetPose(itp);
   }
@@ -36,6 +38,24 @@ class HelmetPose {
   bool get isNCHW {
     final inShape = _interpreter.getInputTensor(0).shape;
     return inShape.length == 4 && inShape[0] == 1 && inShape[1] == 3;
+  }
+
+  int get modelHeight {
+    final inShape = _interpreter.getInputTensor(0).shape;
+    if (isNCHW) {
+      return inShape[2];
+    } else {
+      return inShape[1];
+    }
+  }
+
+  int get modelWidth {
+    final inShape = _interpreter.getInputTensor(0).shape;
+    if (isNCHW) {
+      return inShape[3];
+    } else {
+      return inShape[2];
+    }
   }
 
   /*
