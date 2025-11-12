@@ -15,15 +15,15 @@ void main() async {
   // Benchmark (Uncomment when benchmarking and comment all he below code within the main function)
   await runBenchmarkSuiteIsolated(
     deviceName: "Infinix NOTE 40 Pro+ 5G",
-    modelALabel: "FP32 Mobilenet",
-    modelAAsset: "assets/mobilenet_fp32.tflite",
-    modelBLabel: "FP32 I/O + INT8 internal Mobilenet",
-    modelBAsset: "assets/mobilenet_fp32io_fp16.tflite",
+    modelALabel: "FP32 EfficientNetB3",
+    modelAAsset: "assets/helmet_pose_fp32.tflite",
+    modelBLabel: "FP32 I/O + FP16 internal EfficientNetB3",
+    modelBAsset: "assets/helmet_pose_fp32io_fp16.tflite",
     sampleImageAsset: "assets/sample.png",
     threads: const [1, 2, 4, 6, 8],
     runs: 30,
     warmup: 5,
-    selectDelegate: "CPU",
+    selectDelegate: "NNAPI",
   );
 
   // // Prevents Landscape orientation
