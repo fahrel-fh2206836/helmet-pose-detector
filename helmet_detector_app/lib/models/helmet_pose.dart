@@ -7,9 +7,6 @@ class HelmetPose {
   // Classes that the model classifies (index 0 -> looking && index 1 -> not_looking)
   static const classes = ["looking", "not_looking"];
 
-  // Height, width, channels (RGB) that matches model input requirements
-  static const int H = 224, W = 224, C = 3;
-
   // Under-the-hood TFLite interpreter object (loads and runs the model).
   final Interpreter _interpreter;
 

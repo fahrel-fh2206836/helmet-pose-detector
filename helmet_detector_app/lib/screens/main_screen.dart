@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/enum/common_enums.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
-import 'package:helmet_detector_app/services/helmet_video_classifier.dart';
+import 'package:helmet_detector_app/services/video_streamer_service.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
 import 'package:helmet_detector_app/services/speed_services.dart';
@@ -24,7 +24,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   // TFLite model wrapper and streaming classifier
   HelmetPose? _model;
-  HelmetVideoClassifier? _streamer;
+  VideoStreamerService? _streamer;
   StreamSubscription<({String label, double prob})>? _modelSub;
 
   // UI status (e.g., "tracking") and last model output
@@ -133,7 +133,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
 
       // Streamer: pulls frames, preprocesses on isolate, runs model
-      _streamer = HelmetVideoClassifier(
+      _streamer = VideoStreamerService(
         camera: _camController!,
         model: _model!,
         maxFps: 10, // tune per device
