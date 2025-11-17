@@ -36,6 +36,7 @@ class SpeedService {
   final double maxJumpKmh; // reject spikes above this jump vs last
   final double maxAccuracyMeters; // reject GPS points with worse accuracy
   final Duration imuGapMax; // max time to use IMU estimation
+  final Duration imuGapMin; // min time to use IMU estimation
 
   SpeedService({
     LocationSettings? locationSettings,
@@ -45,6 +46,7 @@ class SpeedService {
     this.maxJumpKmh = 80.0, // reject absurd single-sample jumps
     this.maxAccuracyMeters = 25.0, // drop poor accuracy fixes
     this.imuGapMax = const Duration(seconds: 2),
+    this.imuGapMin = const Duration(seconds: 1),
   }) : locationSettings =
            locationSettings ??
            const LocationSettings(
@@ -191,22 +193,45 @@ class SpeedService {
   void _onAccel(AccelerometerEvent e) {
     // Only try IMU fill if the last GPS fix is recent enough
     final now = DateTime.now();
-    if (_lastFixAt == null) return;
-    final gap = now.difference(_lastFixAt!);
-    if (gap > imuGapMax) return; // we don't trust longer IMU runs => drift
 
-    /* 
-    Very rough magnitude-only integration (not frame-aligned, but ok for tiny gaps).
-    NOTE: Without device orientation & gravity removal this is crude.
-    Keep this conservative to avoid drift explosions.
-    */
-    final dt = 1 / 50.0; // assume ~50 Hz average; sensors_plus varies by device
-    final g = 9.80665;
-    final ax = e.x, ay = e.y, az = e.z;
+    // We can’t do anything without at least one GPS fix
+    if (_lastFixAt == null) return;
+
+    final gap = now.difference(_lastFixAt!);
+
+    // ---- GAP LOGIC -------------------------------------------------
+    // Only use IMU when:
+    //   imuGapMin <= gap <= imuGapMax
+    //
+    // - gap < imuGapMin  => GPS is still "fresh": keep last GPS speed.
+    // - gap > imuGapMax  => IMU would drift too much: don't trust it.
+
+    // start IMU fill after ~1 s of silence
+    if (gap < imuGapMin) {
+      // GPS is updating normally, don't overwrite it with IMU
+      return;
+    }
+
+    if (gap > imuGapMax) {
+      // Gap too long: stop trusting IMU until next GPS fix
+      return;
+    }
+    // ----------------------------------------------------------------
+
+    // Very rough magnitude-only integration (not frame-aligned).
+    // NOTE: Without device orientation & gravity removal this is crude.
+    // Keep this conservative to avoid drift explosions.
+    const dt = 1.0 / 50.0; // assume ~50 Hz average
+    const g = 9.80665;
+
+    final ax = e.x;
+    final ay = e.y;
+    final az = e.z;
+
     final aMag =
         math.sqrt(ax * ax + ay * ay + az * az) - g; // naive gravity removal
 
-    //v = v + a * dt (in m/s) then to km/h. Clamp to >=0.
+    // v = v + a * dt (m/s), then convert to km/h, clamp to >= 0.
     final dvMs = aMag * dt;
     final vMs = math.max(0.0, (_imuKmhEstimate / 3.6) + dvMs);
     _imuKmhEstimate = vMs * 3.6;
@@ -214,12 +239,6 @@ class SpeedService {
     // Blend IMU with latestKmh using small alpha so it only nudges UI
     final blended = (0.85 * latestKmh) + (0.15 * _imuKmhEstimate);
     final smoothed = _smooth(blended);
-
-    // Don’t emit if we actually have a fresh GPS fix in this same instant
-    if (_lastFixAt != null &&
-        now.difference(_lastFixAt!) <= const Duration(milliseconds: 100)) {
-      return;
-    }
 
     _emit(smoothed, SpeedSource.imuEstimate);
   }
