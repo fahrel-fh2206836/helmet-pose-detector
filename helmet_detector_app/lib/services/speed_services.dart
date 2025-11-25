@@ -41,12 +41,12 @@ class SpeedService {
   SpeedService({
     LocationSettings? locationSettings,
     this.windowSize = 5,
-    this.emaAlpha = 0.35,
+    this.emaAlpha = 0.6,
     this.minValidKmh = 0.3,
     this.maxJumpKmh = 80.0, // reject absurd single-sample jumps
     this.maxAccuracyMeters = 25.0, // drop poor accuracy fixes
-    this.imuGapMax = const Duration(seconds: 2),
-    this.imuGapMin = const Duration(seconds: 1),
+    this.imuGapMax = const Duration(seconds: 5),
+    this.imuGapMin = const Duration(seconds: 2),
   }) : locationSettings =
            locationSettings ??
            const LocationSettings(
