@@ -34,7 +34,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Smoothed speed pipeline
   final _speed = SpeedService(
     windowSize: 5,
-    emaAlpha: 0.35,
+    emaAlpha: 0.6,
     maxAccuracyMeters: 25.0,
   );
   StreamSubscription<double>? _speedSub;
@@ -85,10 +85,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   // Map current speed to how long "looking" must be held before an alert
   Duration _holdTimeForSpeed(double kmh) {
-    if (kmh >= 50) return const Duration(seconds: 2);
-    if (kmh >= 25) return const Duration(seconds: 4);
-    if (kmh >= 15) return const Duration(seconds: 6);
-    return const Duration(seconds: 8); // between 5 and <15
+    if (kmh >= 40) return const Duration(seconds: 2);
+    if (kmh >= 15) return const Duration(seconds: 4);
+    return const Duration(seconds: 6); // between 5 and <15
   }
 
   // camera + model + subscriptions
@@ -146,7 +145,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // 2) Alert policy
         final now = DateTime.now();
         final speed = _kmhCurrent; // from SpeedService
-        _requiredHold = _holdTimeForSpeed(speed);
 
         final bool isLooking =
             (res.label == 'looking') && (res.prob >= _probThreshold);
@@ -156,6 +154,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _lookingSince = null; // reset any hold
           return;
         }
+
+        _requiredHold = _holdTimeForSpeed(speed);
 
         if (isLooking) {
           _lookingSince ??= now;
