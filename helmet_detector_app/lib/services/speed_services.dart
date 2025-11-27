@@ -33,7 +33,6 @@ class SpeedService {
   final int windowSize; // sliding window length (e.g., 4–8)
   final double emaAlpha; // 0..1, higher = more reactive
   final double minValidKmh; // below this, treat as 0 km/h
-  final double maxJumpKmh; // reject spikes above this jump vs last
   final double maxAccuracyMeters; // reject GPS points with worse accuracy
   final Duration imuGapMax; // max time to use IMU estimation
   final Duration imuGapMin; // min time to use IMU estimation
@@ -43,7 +42,6 @@ class SpeedService {
     this.windowSize = 5,
     this.emaAlpha = 0.6,
     this.minValidKmh = 0.3,
-    this.maxJumpKmh = 80.0, // reject absurd single-sample jumps
     this.maxAccuracyMeters = 25.0, // drop poor accuracy fixes
     this.imuGapMax = const Duration(seconds: 5),
     this.imuGapMin = const Duration(seconds: 2),
@@ -100,7 +98,7 @@ class SpeedService {
         );
 
     // Subscribe to accelerometer (IMU) stream
-    _accelSub ??= accelerometerEventStream().listen(_onAccel, onError: (_) {});
+    // _accelSub ??= accelerometerEventStream().listen(_onAccel, onError: (_) {});
 
     // Emit an initial value so UI can render immediately
     _emit(0.0, SpeedSource.unknown);
@@ -173,15 +171,9 @@ class SpeedService {
     // Clamp small noise to zero
     if (kmh.abs() < minValidKmh) kmh = 0.0;
 
-    // Reject absurd spikes vs last
-    if ((kmh - latestKmh).abs() > maxJumpKmh && latestKmh > 0) {
-      _prevPos = pos;
-      return;
-    }
-
     // Reset IMU estimate on fresh GPS fix
-    _imuKmhEstimate = kmh;
-    _imuStart = DateTime.now();
+    // _imuKmhEstimate = kmh;
+    // _imuStart = DateTime.now();
 
     // Smooth (window avg + EMA) and emit
     final smoothed = _smooth(kmh);
@@ -221,7 +213,7 @@ class SpeedService {
     // Very rough magnitude-only integration (not frame-aligned).
     // NOTE: Without device orientation & gravity removal this is crude.
     // Keep this conservative to avoid drift explosions.
-    const dt = 1.0 / 50.0; // assume ~50 Hz average
+    const dt = 1.0 / 50;
     const g = 9.80665;
 
     final ax = e.x;
@@ -253,6 +245,7 @@ class SpeedService {
     // Exponential moving average on top for extra smoothing
     final ema = (emaAlpha * avg) + ((1 - emaAlpha) * latestKmh);
     return ema;
+    // return avg;
   }
 
   // Emit helpers
