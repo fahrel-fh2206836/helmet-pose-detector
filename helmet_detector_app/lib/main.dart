@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:helmet_detector_app/screens/main_screen.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
 import 'package:helmet_detector_app/services/permission_service.dart';
 
 // Uncomment to benchmark
-import 'package:helmet_detector_app/benchmark/benchmark_v2.dart';
+// import 'package:helmet_detector_app/benchmark/benchmark_v2.dart';
+import 'package:helmet_detector_app/benchmark/benchmark_v3_with_csv.dart';
 
 // Note: App currently working only on Android phones.
 
@@ -13,20 +15,20 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Benchmark (Uncomment when benchmarking and comment all he below code within the main function)
-  await runBenchmarkSuiteIsolated(
-    deviceName: "Infinix NOTE 40 Pro+ 5G",
-    modelALabel: "FP32 EfficientNetB3",
-    modelAAsset: "assets/helmet_pose_fp32.tflite",
-    modelBLabel: "FP32 I/O + FP16 internal EfficientNetB3",
-    modelBAsset: "assets/helmet_pose_fp32io_fp16.tflite",
+  await runBenchmarkSuiteIsolatedWithCSV(
+    deviceName: "S24+",
+    modelALabel: "mobilenetv3_large_100",
+    modelAAsset: "assets/mobilenetv3_large_100_fp32io_fp16.tflite",
+    modelBLabel: "mobilenetv3_small_100",
+    modelBAsset: "assets/mobilenetv3_small_100_fp32io_fp16.tflite",
     sampleImageAsset: "assets/sample.png",
-    threads: const [1, 2, 4, 6, 8],
-    runs: 30,
-    warmup: 5,
-    selectDelegate: "NNAPI",
+    threads: const [4],
+    runs: 100,
+    warmup: 10,
+    selectDelegate: "XNNPACK",
   );
 
-  // // Prevents Landscape orientation
+  // Prevents Landscape orientation
   // await SystemChrome.setPreferredOrientations([
   //   DeviceOrientation.portraitUp, // Lock to upright portrait
   //   DeviceOrientation.portraitDown, // Allow upside-down portrait

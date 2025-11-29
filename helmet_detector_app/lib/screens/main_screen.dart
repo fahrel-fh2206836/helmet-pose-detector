@@ -127,7 +127,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
       // Load your model
       _model = await HelmetPose.load(
-        assetPath: 'assets/mobilenet_fp32.tflite',
+        assetPath: 'assets/resnet18_fp32io_fp16.tflite',
         threads: 6,
       );
 
