@@ -31,15 +31,11 @@ class VideoStreamerService {
       false; // Simple backpressure guard, prevent a frame from being processed if previous frame hasn't been fully processed.
   Timer? _ticker; // Periodic trigger to run inference
   CameraImage? _latest; // Newest camera frame (we keep only the latest)
-  bool _isNCHW = false; // cache model layout
 
   // Start stream service
   Future<void> start() async {
     if (_started) return;
     _started = true;
-
-    // Read model input layout only once (controls how we pack tensors)
-    _isNCHW = model.isNCHW;
 
     // Ensure camera is ready
     if (!camera.value.isInitialized) {
@@ -66,7 +62,7 @@ class VideoStreamerService {
 
       try {
         // Pack planes + metadata for isolate
-        final message = packForIsolate(imgNow, _isNCHW, model);
+        final message = packForIsolate(imgNow, model);
         // Do all heavy work off the UI isolate
         final res =
             await compute<Map<String, dynamic>, ({String label, double prob})>(
