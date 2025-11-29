@@ -83,8 +83,9 @@ class _BenchStats {
 }
 
 InterpreterOptions _optsXnn(int threads) => (InterpreterOptions()
-  ..threads = threads
-  ..addDelegate(XNNPackDelegate())
+  ..addDelegate(
+    XNNPackDelegate(options: XNNPackDelegateOptions(numThreads: threads)),
+  )
   ..useNnApiForAndroid = false);
 InterpreterOptions _optsCpu(int threads) => (InterpreterOptions()
   ..threads = threads
