@@ -103,16 +103,16 @@ Future<({String label, double prob})> preprocessIsolate(
   }
 
   final img.Image im;
-  if (height == 300 && width == 300) {
-    // 2) resize to 320
-    var im320 = img.copyResize(rgb, width: 320, height: 320);
+  // if (height == 300 && width == 300) {
+  //   // 2) resize to 320
+  //   var im320 = img.copyResize(rgb, width: 320, height: 320);
 
-    // 3) center-crop to 300x300 (same as your predict() path)
-    final off = (320 - height) >> 1;
-    im = img.copyCrop(im320, x: off, y: off, width: width, height: height);
-  } else {
-    im = img.copyResize(rgb, width: width, height: height);
-  }
+  //   // 3) center-crop to 300x300 (same as your predict() path)
+  //   final off = (320 - height) >> 1;
+  //   im = img.copyCrop(im320, x: off, y: off, width: width, height: height);
+  // } else {
+  im = img.copyResize(rgb, width: width, height: height);
+  // }
 
   // 4) normalize with PyTorch mean/std and build nested list to match layout
   const mean = [0.485, 0.456, 0.406];

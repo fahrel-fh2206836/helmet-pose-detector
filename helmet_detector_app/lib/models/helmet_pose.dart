@@ -18,8 +18,9 @@ class HelmetPose {
     int threads = 4,
   }) async {
     final options = InterpreterOptions()
-      ..threads = threads
-      ..addDelegate(XNNPackDelegate());
+      ..addDelegate(
+        XNNPackDelegate(options: XNNPackDelegateOptions(numThreads: threads)),
+      );
     final itp = await Interpreter.fromAsset(assetPath, options: options);
     return HelmetPose(itp);
   }
