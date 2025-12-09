@@ -79,6 +79,8 @@ flutter:
     - assets/mobilenetv2_140_fp32io_fp16.tflite
     - assets/mobilenetv3_large_100_fp32io_fp16.tflite
     - assets/mobilenetv3_small_075_fp32io_fp16.tflite
+    - assets/mobilenetv2_100_int8_fp32io.tflite
+    - assets/mobilenetv2_100_full_int8.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

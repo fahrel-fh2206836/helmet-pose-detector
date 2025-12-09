@@ -123,68 +123,88 @@ Object _buildInput({
   required bool isNCHW,
   required int H,
   required int W,
+  required Interpreter interpreter,
 }) {
   img.Image? im = img.decodeImage(bytes);
-  if (im == null) {
-    throw StateError("Unsupported image data.");
-  }
+  if (im == null) throw StateError("Unsupported image data.");
+
   im = img.copyResize(im, width: W, height: H);
-  // final off = (320 - W) ~/ 2;
-  // im = img.copyCrop(im, x: off, y: off, width: W, height: H);
 
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];
 
+  // --- First build FP32-normalized tensor shapes ---
+  Object fpInput;
   if (isNCHW) {
-    final c0 = List.generate(
-      H,
-      (_) => List<double>.filled(W, 0.0),
-      growable: false,
-    );
-    final c1 = List.generate(
-      H,
-      (_) => List<double>.filled(W, 0.0),
-      growable: false,
-    );
-    final c2 = List.generate(
-      H,
-      (_) => List<double>.filled(W, 0.0),
-      growable: false,
-    );
+    final c0 = List.generate(H, (_) => List<double>.filled(W, 0.0));
+    final c1 = List.generate(H, (_) => List<double>.filled(W, 0.0));
+    final c2 = List.generate(H, (_) => List<double>.filled(W, 0.0));
+
     for (int y = 0; y < H; y++) {
       for (int x = 0; x < W; x++) {
-        final c = im.getPixel(x, y);
-        final r = c.r.toDouble() / 255.0;
-        final g = c.g.toDouble() / 255.0;
-        final b = c.b.toDouble() / 255.0;
+        final p = im.getPixel(x, y);
+        final r = p.r / 255.0;
+        final g = p.g / 255.0;
+        final b = p.b / 255.0;
+
         c0[y][x] = (r - mean[0]) / std[0];
         c1[y][x] = (g - mean[1]) / std[1];
         c2[y][x] = (b - mean[2]) / std[2];
       }
     }
-    return [
+    fpInput = [
       [c0, c1, c2],
     ];
   } else {
     final hwc = List.generate(
       H,
-      (_) =>
-          List.generate(W, (_) => List<double>.filled(3, 0.0), growable: false),
-      growable: false,
+      (_) => List.generate(W, (_) => List<double>.filled(3, 0.0)),
     );
+
     for (int y = 0; y < H; y++) {
       for (int x = 0; x < W; x++) {
-        final c = im.getPixel(x, y);
-        final r = c.r.toDouble() / 255.0;
-        final g = c.g.toDouble() / 255.0;
-        final b = c.b.toDouble() / 255.0;
+        final p = im.getPixel(x, y);
+        final r = p.r / 255.0;
+        final g = p.g / 255.0;
+        final b = p.b / 255.0;
+
         hwc[y][x][0] = (r - mean[0]) / std[0];
         hwc[y][x][1] = (g - mean[1]) / std[1];
         hwc[y][x][2] = (b - mean[2]) / std[2];
       }
     }
-    return [hwc];
+    fpInput = [hwc];
   }
+
+  // --- Now check input tensor dtype ---
+  final inputTensor = interpreter.getInputTensor(0);
+  final type = inputTensor.type;
+
+  if (type == TensorType.float32 || type == TensorType.float16) {
+    // No quantization needed
+    return fpInput;
+  }
+
+  if (type == TensorType.int8) {
+    final scale = inputTensor.params.scale;
+    final zero = inputTensor.params.zeroPoint;
+
+    // Quantize FP32 → INT8
+    Object quantize(Object x) {
+      if (x is double) {
+        final q = (x / scale + zero).round().clamp(-128, 127);
+        return q; // int
+      } else if (x is List) {
+        return x.map((v) => quantize(v)).toList();
+      } else {
+        throw StateError("Unsupported type in quantization");
+      }
+    }
+
+    return quantize(fpInput);
+  }
+
+  throw StateError("Unsupported input type: $type");
 }
 
 Future<_BenchStats> _runOne({
@@ -213,7 +233,13 @@ Future<_BenchStats> _runOne({
     throw StateError('Unsupported input shape: $inShape');
   }
 
-  final input = _buildInput(bytes: imageBytes, isNCHW: isNCHW, H: H, W: W);
+  final input = _buildInput(
+    bytes: imageBytes,
+    isNCHW: isNCHW,
+    H: H,
+    W: W,
+    interpreter: itp,
+  );
 
   // Warmup
   for (int i = 0; i < warmup; i++) {
@@ -252,31 +278,65 @@ Future<({String label, double prob})> runInference(
   Object inputNested,
   Interpreter interpreter,
 ) async {
-  // Read output shape, e.g., [1,2]
-  final outShape = interpreter.getOutputTensor(0).shape;
+  final outTensor = interpreter.getOutputTensor(0);
+  final outType = outTensor.type;
 
-  // Allocate output based on the model's output shape.
+  final outShape = outTensor.shape;
+
+  // Allocate FP32 structure to store final logits
   final output = List.generate(
     outShape[0],
-    (_) => List<double>.filled(outShape[1], 0.0, growable: false),
-    growable: false,
+    (_) => List<double>.filled(outShape[1], 0.0),
   );
 
-  // Run the model with your prepared input and stores output in 'output' variable.
-  interpreter.run(inputNested, output);
+  // Temporary storage for raw output
+  Object rawOut;
 
-  // Read raw scores (logits) for 2 classes and compute stable softmax.
+  if (outType == TensorType.int8) {
+    // Prepare int8 container
+    rawOut = List.generate(
+      outShape[0],
+      (_) => List<int>.filled(outShape[1], 0),
+    );
+  } else {
+    rawOut = List.generate(
+      outShape[0],
+      (_) => List<double>.filled(outShape[1], 0.0),
+    );
+  }
+
+  // Run inference
+  interpreter.run(inputNested, rawOut);
+
+  // --- Dequantize if needed ---
+  if (outType == TensorType.int8) {
+    final scale = outTensor.params.scale;
+    final zero = outTensor.params.zeroPoint;
+
+    for (int i = 0; i < outShape[0]; i++) {
+      for (int j = 0; j < outShape[1]; j++) {
+        output[i][j] = ((rawOut as List<List<int>>)[i][j] - zero) * scale;
+      }
+    }
+  } else {
+    // Already FP32
+    for (int i = 0; i < outShape[0]; i++) {
+      for (int j = 0; j < outShape[1]; j++) {
+        output[i][j] = (rawOut as List<List<double>>)[i][j];
+      }
+    }
+  }
+
+  // Apply softmax (stable)
   final a = output[0][0], b = output[0][1];
   final m = math.max(a, b);
   final ea = math.exp(a - m), eb = math.exp(b - m);
   final s = ea + eb;
-
-  // prob for class 0 and 1, respectively.
   final p0 = ea / s, p1 = eb / s;
 
-  // Pick the top class and output label + confidence.
   final predIdx = p1 > p0 ? 1 : 0;
-  final prob = predIdx == 0 ? p0 : p1;
+  final prob = predIdx == 1 ? p1 : p0;
+
   return (label: HelmetPose.classes[predIdx], prob: prob);
 }
 
