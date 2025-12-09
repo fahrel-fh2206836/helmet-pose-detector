@@ -17,10 +17,10 @@ void main() async {
   // Benchmark (Uncomment when benchmarking and comment all he below code within the main function)
   await runBenchmarkSuiteIsolatedWithCSV(
     deviceName: "S24+",
-    modelALabel: "efficientnet_b0_full_int8",
-    modelAAsset: "assets/int8/efficientnet_b0_full_int8.tflite",
-    modelBLabel: "efficientnet_b1_full_int8",
-    modelBAsset: "assets/int8/efficientnet_b1_full_int8.tflite",
+    modelALabel: "mobilenetv3_large_100_full_int8",
+    modelAAsset: "assets/int8/mobilenetv3_large_100_full_int8.tflite",
+    modelBLabel: "mobilenetv3_small_075_full_int8",
+    modelBAsset: "assets/int8/mobilenetv3_small_075_full_int8.tflite",
     sampleImageAsset: "assets/sample.png",
     threads: const [4],
     runs: 100,
