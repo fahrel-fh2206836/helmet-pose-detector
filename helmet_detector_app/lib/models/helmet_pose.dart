@@ -66,32 +66,105 @@ class HelmetPose {
   Use: When tensor input is formatted so method just runs inference 
   (Used within app's logic to avoid heavy preprocessing on main thread)
   */
-  Future<({String label, double prob})> runInference(Object inputNested) async {
-    // Read output shape, e.g., [1,2]
-    final outShape = _interpreter.getOutputTensor(0).shape;
+  Future<({String label, double prob})> runInference(
+    Object floatInputNested,
+  ) async {
+    // ====== 1. Inspect input tensor type ======
+    final inputTensor = _interpreter.getInputTensor(0);
+    final inputType = inputTensor.type;
 
-    // Allocate output based on the model's output shape.
+    // This will be passed to interpreter.run(...)
+    late final Object modelInput;
+
+    if (inputType == TensorType.float32 || inputType == TensorType.float16) {
+      // FP32 / FP16 model → just pass through floats
+      modelInput = floatInputNested;
+    } else if (inputType == TensorType.int8) {
+      // INT8 model → we must quantize the float input
+      final scale = inputTensor.params.scale;
+      final zero = inputTensor.params.zeroPoint;
+
+      Object quantize(Object x) {
+        if (x is double) {
+          final q = (x / scale + zero).round().clamp(-128, 127);
+          return q; // int
+        } else if (x is List) {
+          return x.map((v) => quantize(v)).toList();
+        } else {
+          throw StateError(
+            "Unsupported type in input tensor: ${x.runtimeType}",
+          );
+        }
+      }
+
+      // IMPORTANT: we do NOT touch the layout. We just quantize the existing structure.
+      modelInput = quantize(floatInputNested);
+    } else {
+      throw StateError("Unsupported input type: $inputType");
+    }
+
+    // ====== 2. Prepare output buffers (same pattern as benchmark) ======
+    final outTensor = _interpreter.getOutputTensor(0);
+    final outType = outTensor.type;
+    final outShape = outTensor.shape;
+
+    // Final FP32 logits
     final output = List.generate(
       outShape[0],
-      (_) => List<double>.filled(outShape[1], 0.0, growable: false),
-      growable: false,
+      (_) => List<double>.filled(outShape[1], 0.0),
     );
 
-    // Run the model with your prepared input and stores output in 'output' variable.
-    _interpreter.run(inputNested, output);
+    // Raw buffer that matches the model's output type
+    late final Object rawOut;
+    if (outType == TensorType.int8) {
+      rawOut = List.generate(
+        outShape[0],
+        (_) => List<int>.filled(outShape[1], 0),
+      );
+    } else if (outType == TensorType.float32 || outType == TensorType.float16) {
+      rawOut = List.generate(
+        outShape[0],
+        (_) => List<double>.filled(outShape[1], 0.0),
+      );
+    } else {
+      throw StateError("Unsupported output type: $outType");
+    }
 
-    // Read raw scores (logits) for 2 classes and compute stable softmax.
-    final a = output[0][0], b = output[0][1];
+    // ====== 3. Run inference ======
+    _interpreter.run(modelInput, rawOut);
+
+    // ====== 4. Dequantize output if needed (exactly like benchmark) ======
+    if (outType == TensorType.int8) {
+      final scale = outTensor.params.scale;
+      final zero = outTensor.params.zeroPoint;
+
+      for (int i = 0; i < outShape[0]; i++) {
+        for (int j = 0; j < outShape[1]; j++) {
+          output[i][j] = ((rawOut as List<List<int>>)[i][j] - zero) * scale;
+        }
+      }
+    } else {
+      for (int i = 0; i < outShape[0]; i++) {
+        for (int j = 0; j < outShape[1]; j++) {
+          output[i][j] = (rawOut as List<List<double>>)[i][j];
+        }
+      }
+    }
+
+    // ====== 5. Softmax + argmax (same as before) ======
+    final a = output[0][0];
+    final b = output[0][1];
     final m = math.max(a, b);
-    final ea = math.exp(a - m), eb = math.exp(b - m);
+    final ea = math.exp(a - m);
+    final eb = math.exp(b - m);
     final s = ea + eb;
 
-    // prob for class 0 and 1, respectively.
-    final p0 = ea / s, p1 = eb / s;
+    final p0 = ea / s;
+    final p1 = eb / s;
 
-    // Pick the top class and output label + confidence.
     final predIdx = p1 > p0 ? 1 : 0;
-    final prob = predIdx == 0 ? p0 : p1;
+    final prob = predIdx == 1 ? p1 : p0;
+
     return (label: HelmetPose.classes[predIdx], prob: prob);
   }
 }
