@@ -167,4 +167,33 @@ class HelmetPose {
 
     return (label: HelmetPose.classes[predIdx], prob: prob);
   }
+
+  // Future<({String label, double prob})> runInference(Object inputNested) async {
+  //   // Read output shape, e.g., [1,2]
+  //   final outShape = _interpreter.getOutputTensor(0).shape;
+
+  //   // Allocate output based on the model's output shape.
+  //   final output = List.generate(
+  //     outShape[0],
+  //     (_) => List<double>.filled(outShape[1], 0.0, growable: false),
+  //     growable: false,
+  //   );
+
+  //   // Run the model with your prepared input and stores output in 'output' variable.
+  //   _interpreter.run(inputNested, output);
+
+  //   // Read raw scores (logits) for 2 classes and compute stable softmax.
+  //   final a = output[0][0], b = output[0][1];
+  //   final m = math.max(a, b);
+  //   final ea = math.exp(a - m), eb = math.exp(b - m);
+  //   final s = ea + eb;
+
+  //   // prob for class 0 and 1, respectively.
+  //   final p0 = ea / s, p1 = eb / s;
+
+  //   // Pick the top class and output label + confidence.
+  //   final predIdx = p1 > p0 ? 1 : 0;
+  //   final prob = predIdx == 0 ? p0 : p1;
+  //   return (label: HelmetPose.classes[predIdx], prob: prob);
+  // }
 }
