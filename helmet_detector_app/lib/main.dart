@@ -7,7 +7,8 @@ import 'package:helmet_detector_app/services/permission_service.dart';
 
 // Uncomment to benchmark
 // import 'package:helmet_detector_app/benchmark/benchmark_v2.dart';
-import 'package:helmet_detector_app/benchmark/benchmark_v3_with_csv.dart';
+// import 'package:helmet_detector_app/benchmark/benchmark_classifier_with_csv_v2.dart';
+import 'package:helmet_detector_app/benchmark/benchmark_helmet_detection.dart';
 
 // Note: App currently working only on Android phones.
 
@@ -15,17 +16,27 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Benchmark (Uncomment when benchmarking and comment all he below code within the main function)
-  await runBenchmarkSuiteIsolatedWithCSV(
+  // await runBenchmarkSuiteIsolatedWithCSV(
+  //   deviceName: "S24+",
+  //   modelALabel: "mobilenetv3_large_100_full_int8",
+  //   modelAAsset: "assets/int8/mobilenetv3_large_100_full_int8.tflite",
+  //   modelBLabel: "mobilenetv3_small_075_full_int8",
+  //   modelBAsset: "assets/int8/mobilenetv3_small_075_full_int8.tflite",
+  //   sampleImageAsset: "assets/sample.png",
+  //   threads: const [4],
+  //   runs: 100,
+  //   warmup: 10,
+  //   selectDelegate: "XNNPACK",
+  // );
+
+  await runYoloInt8NmsBenchmarkIsolatedWithCSV(
     deviceName: "S24+",
-    modelALabel: "mobilenetv3_large_100_full_int8",
-    modelAAsset: "assets/int8/mobilenetv3_large_100_full_int8.tflite",
-    modelBLabel: "mobilenetv3_small_075_full_int8",
-    modelBAsset: "assets/int8/mobilenetv3_small_075_full_int8.tflite",
-    sampleImageAsset: "assets/sample.png",
+    modelLabel: "YOLOv8n INT8 (NMS)",
+    modelAsset: "assets/int8/yolov8n_full_int8.tflite",
+    selectDelegate: "XNNPACK",
     threads: const [4],
     runs: 100,
     warmup: 10,
-    selectDelegate: "XNNPACK",
   );
 
   // Prevents Landscape orientation
