@@ -5,7 +5,7 @@
 //
 // Matches your Roboflow preprocessing: Resize "Fit (black edges)" => letterbox with BLACK padding.
 // Matches your Colab tensor details:
-//   Input : [1,640,640,3] int8  quant(scale≈0.0039215689, zeroPoint=-128)
+//   Input : [1,320,320,3] int8  quant(scale≈0.0039215689, zeroPoint=-128)
 //   Output: [1,300,6]     int8  quant(scale≈0.0040839640, zeroPoint=-120)
 //
 // Measures end-to-end model latency INCLUDING NMS (since NMS is baked in).
@@ -34,7 +34,7 @@ Future<void> runYoloInt8NmsBenchmarkIsolatedWithCSV({
   String selectDelegate = 'XNNPACK',
 
   /// YOLO input size
-  int imgSize = 640,
+  int imgSize = 320,
 }) async {
   // Prepare assets on MAIN isolate
   final modelPath = await _copyAssetToTemp(modelAsset);
@@ -154,7 +154,7 @@ img.Image _letterboxBlack(img.Image src, int target) {
 }
 
 /// Build YOLO input for your exact model:
-/// - NHWC [1,640,640,3]
+/// - NHWC [1,320,320,3]
 /// - int8 quant with model's scale/zeroPoint
 Object _buildYoloInt8InputNHWC({
   required Uint8List bytes,
@@ -167,7 +167,7 @@ Object _buildYoloInt8InputNHWC({
   final padded = _letterboxBlack(im, imgSize);
 
   final inTensor = interpreter.getInputTensor(0);
-  final inShape = inTensor.shape; // expected [1,640,640,3]
+  final inShape = inTensor.shape; // expected [1,320,320,3]
   final inType = inTensor.type;
 
   if (inShape.length != 4 ||
@@ -510,6 +510,6 @@ void _sanityCheckOnce({
 
   // Helpful reminder (since your Colab confirmed normalized coords)
   print(
-    '[sanity] note: coords appear normalized → multiply by 640 for pixel space.',
+    '[sanity] note: coords appear normalized → multiply by 320 for pixel space.',
   );
 }
