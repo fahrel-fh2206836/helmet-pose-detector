@@ -14,7 +14,7 @@ class HelmetPose {
 
   // Initialize and loads interpreter with AI model (tflite from assets) with NNAPI and threads configurations
   static Future<HelmetPose> load({
-    String assetPath = 'assets/effNetB3_fp32io_fp16.tflite',
+    String assetPath = 'assets/mobilenetv2_100_full_int8.tflite',
     int threads = 4,
   }) async {
     final options = InterpreterOptions()
@@ -103,7 +103,7 @@ class HelmetPose {
       throw StateError("Unsupported input type: $inputType");
     }
 
-    // ====== 2. Prepare output buffers (same pattern as benchmark) ======
+    // ====== 2. Prepare output buffers ======
     final outTensor = _interpreter.getOutputTensor(0);
     final outType = outTensor.type;
     final outShape = outTensor.shape;
