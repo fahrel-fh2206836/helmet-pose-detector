@@ -136,7 +136,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
 
       _helmetDet = await HelmetDetector.load(
-        assetPath: 'assets/yolo11n_full_int8_320.tflite',
+        assetPath: 'assets/best_full_integer_quant.tflite',
         threads: 4,
       );
 

@@ -3,6 +3,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 
 class HelmetDetector {
   final Interpreter _itp;
+  int helmetClass = 0; // or 1
 
   HelmetDetector(this._itp);
 
@@ -32,7 +33,12 @@ class HelmetDetector {
         : (target / srcH);
     final newW = (srcW * scale).round();
     final newH = (srcH * scale).round();
-    final resized = img.copyResize(src, width: newW, height: newH);
+    final resized = img.copyResize(
+      src,
+      width: newW,
+      height: newH,
+      // interpolation: img.Interpolation.linear,
+    );
 
     final canvas = img.Image(width: target, height: target);
     img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
@@ -96,14 +102,38 @@ class HelmetDetector {
 
     _itp.run(input, out);
 
-    // Find max conf
-    int maxQ = -128;
+    // NMS layout: [x1, y1, x2, y2, conf, cls]
+    const int confIdx = 4;
+    const int clsIdx = 5;
+
+    double deq(int q) => (q - outZero) * outScale;
+
+    double bestHelmet = 0.0;
+    bool helmetDetected = false;
+
     for (int i = 0; i < out[0].length; i++) {
-      final qConf = out[0][i][4];
-      if (qConf > maxQ) maxQ = qConf;
+      final row = out[0][i];
+
+      final conf = deq(row[confIdx]);
+      if (conf < confThres) continue;
+
+      // --- decode class id robustly (some NMS int8 exports store cls raw, others quantized) ---
+      final int clsRaw = row[clsIdx];
+      final int clsDeq = deq(row[clsIdx]).round();
+
+      // Prefer a decoded value that falls into valid class range [0..1]
+      final int cls = (clsDeq == 0 || clsDeq == 1)
+          ? clsDeq
+          : ((clsRaw == 0 || clsRaw == 1) ? clsRaw : clsDeq);
+
+      if (cls == helmetClass) {
+        helmetDetected = true;
+        if (conf > bestHelmet) bestHelmet = conf;
+        // optional: break if you only need a boolean and don't care about max conf
+        // break;
+      }
     }
 
-    final maxConf = (maxQ - outZero) * outScale;
-    return (helmetDetected: maxConf >= confThres, helmetConf: maxConf);
+    return (helmetDetected: helmetDetected, helmetConf: bestHelmet);
   }
 }
