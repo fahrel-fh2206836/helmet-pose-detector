@@ -25,36 +25,13 @@ class HelmetDetector {
 
   int get inputSize => _itp.getInputTensor(0).shape[1]; // [1,S,S,3]
 
-  /// Letterbox with BLACK padding (matches your Roboflow setting)
-  img.Image _letterboxBlack(img.Image src, int target) {
-    final srcW = src.width, srcH = src.height;
-    final scale = (target / srcW < target / srcH)
-        ? (target / srcW)
-        : (target / srcH);
-    final newW = (srcW * scale).round();
-    final newH = (srcH * scale).round();
-    final resized = img.copyResize(
-      src,
-      width: newW,
-      height: newH,
-      // interpolation: img.Interpolation.linear,
-    );
-
-    final canvas = img.Image(width: target, height: target);
-    img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
-    final dx = ((target - newW) / 2).round();
-    final dy = ((target - newH) / 2).round();
-    img.compositeImage(canvas, resized, dstX: dx, dstY: dy);
-    return canvas;
-  }
-
   /// Returns (helmetDetected, helmetConf) from NMS output [1,N,6] int8
   ({bool helmetDetected, double helmetConf}) runDetection(
     img.Image rgb, {
     double confThres = 0.5,
   }) {
     final S = inputSize;
-    final padded = _letterboxBlack(rgb, S);
+    final padded = img.copyResize(rgb, width: S, height: S);
 
     final inTensor = _itp.getInputTensor(0);
     final s = inTensor.params.scale;
