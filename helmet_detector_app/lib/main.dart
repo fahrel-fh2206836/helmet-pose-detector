@@ -31,13 +31,13 @@ void main() async {
 
   await runYoloInt8NmsBenchmarkIsolatedWithCSV(
     deviceName: "S24+",
-    modelLabel: "YOLOv11n INT8 (NMS) 224x224",
+    modelLabel: "YOLOv11n INT8 640x640",
     modelAsset: "assets/int8/best_full_integer_quant.tflite",
     selectDelegate: "XNNPACK",
     threads: const [4],
     runs: 100,
     warmup: 10,
-    imgSize: 224,
+    imgSize: 320,
   );
 
   // Prevents Landscape orientation

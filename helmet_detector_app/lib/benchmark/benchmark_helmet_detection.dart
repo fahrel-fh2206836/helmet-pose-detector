@@ -131,28 +131,6 @@ double _percentile(List<double> sorted, double q) {
   return sorted[i] + frac * (sorted[i + 1] - sorted[i]);
 }
 
-/// Roboflow: "Resize: Fit (black edges)" => letterbox with BLACK padding.
-img.Image _letterboxBlack(img.Image src, int target) {
-  final srcW = src.width;
-  final srcH = src.height;
-
-  final scale = (target / srcW < target / srcH)
-      ? (target / srcW)
-      : (target / srcH);
-  final newW = (srcW * scale).round();
-  final newH = (srcH * scale).round();
-
-  final resized = img.copyResize(src, width: newW, height: newH);
-
-  final canvas = img.Image(width: target, height: target);
-  img.fill(canvas, color: img.ColorRgb8(0, 0, 0)); // black edges
-  final dx = ((target - newW) / 2).round();
-  final dy = ((target - newH) / 2).round();
-
-  img.compositeImage(canvas, resized, dstX: dx, dstY: dy);
-  return canvas;
-}
-
 /// Build YOLO input for your exact model:
 /// - NHWC [1,320,320,3]
 /// - int8 quant with model's scale/zeroPoint
@@ -164,7 +142,7 @@ Object _buildYoloInt8InputNHWC({
   img.Image? im = img.decodeImage(bytes);
   if (im == null) throw StateError("Unsupported image data.");
 
-  final padded = _letterboxBlack(im, imgSize);
+  final resized = img.copyResize(im, width: imgSize, height: imgSize);
 
   final inTensor = interpreter.getInputTensor(0);
   final inShape = inTensor.shape; // expected [1,320,320,3]
@@ -197,7 +175,7 @@ Object _buildYoloInt8InputNHWC({
 
   for (int y = 0; y < imgSize; y++) {
     for (int x = 0; x < imgSize; x++) {
-      final p = padded.getPixel(x, y);
+      final p = resized.getPixel(x, y);
       hwc[y][x][0] = q(p.r / 255.0);
       hwc[y][x][1] = q(p.g / 255.0);
       hwc[y][x][2] = q(p.b / 255.0);
