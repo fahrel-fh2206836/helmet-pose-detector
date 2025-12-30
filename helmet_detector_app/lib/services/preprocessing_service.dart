@@ -109,7 +109,7 @@ preprocessAndInferenceIsolate(Map<String, dynamic> msg) async {
   }
 
   //  YOLO helmet detect FIRST
-  final detRes = det.runDetection(rgb, confThres: .55);
+  final detRes = det.runDetection(rgb, confThres: .7);
 
   // If no helmet → skip pose inference (saves time)
   if (!detRes.helmetDetected) {
