@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/benchmark/benchmark_pipeline.dart';
 import 'package:helmet_detector_app/enum/common_enums.dart';
 import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
@@ -133,12 +134,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
       // Load your model
       _helmetPoseModel = await HelmetPose.load(
-        assetPath: 'assets/mobilenetv2_100_full_int8.tflite',
+        assetPath: 'assets/int8/mobilenetv2_100_full_int8.tflite',
         threads: 4,
       );
 
       _helmetDet = await HelmetDetector.load(
-        assetPath: 'assets/yolo11n_full_int8_320.tflite',
+        assetPath: 'assets/int8/yolo11n_full_int8_320.tflite',
         threads: 4,
       );
 
@@ -147,7 +148,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         camera: _camController!,
         helmetPoseModel: _helmetPoseModel!,
         helmetDetector: _helmetDet!,
-        maxFps: 10, // tune per device
+        maxFps: 8, // tune per device
       );
 
       // Subscribe to (label, prob)
@@ -228,9 +229,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   // Controls services based on state
-  void controlServices() {
+  void controlServices() async {
     if (_isServiceRunning) {
-      _streamer?.start();
+      logger.start();    
+      await _streamer?.start();
       _speed.start();
       setState(() {
         _status = "tracking";
@@ -241,6 +243,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() {
         _status = "not_tracking";
       });
+      await stopAndExport();
     }
   }
 

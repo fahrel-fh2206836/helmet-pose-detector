@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:helmet_detector_app/benchmark/benchmark_pipeline.dart';
 import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:helmet_detector_app/services/preprocessing_service.dart';
@@ -55,6 +56,7 @@ class VideoStreamerService {
     */
     if (!camera.value.isStreamingImages) {
       await camera.startImageStream((CameraImage image) {
+        logger.onFrameReceived();
         _latest = image; // Store the newest frame
       });
     }
@@ -66,6 +68,8 @@ class VideoStreamerService {
       final imgNow = _latest;
       if (imgNow == null) return; // nothing to process yet
       _busy = true;
+
+      final sw = Stopwatch()..start();
 
       try {
         // Pack planes + metadata for isolate
@@ -81,6 +85,11 @@ class VideoStreamerService {
                 double helmetConf,
               })
             >(prepAndInferIsolate, message);
+
+        sw.stop();
+        final totalUs = sw.elapsedMicroseconds;
+
+        logger.onFrameProcessed(pipelineUs: totalUs);
 
         // Emit the result to listeners if stream is still open
         if (!_controller.isClosed) _controller.add(res);
