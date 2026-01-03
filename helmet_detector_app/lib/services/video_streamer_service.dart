@@ -4,24 +4,31 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:helmet_detector_app/services/preprocessing_service.dart';
 
 class VideoStreamerService {
   final CameraController camera;
-  final HelmetPose model;
+  final HelmetPose helmetPoseModel;
+  final HelmetDetector helmetDetector;
 
   // Broadcasts values of (label, prob) to listeners in the UI.
-  final StreamController<({String label, double prob})> _controller =
-      StreamController.broadcast();
-  Stream<({String label, double prob})> get stream => _controller.stream;
+  final StreamController<
+    ({String label, double prob, bool helmetDetected, double helmetConf})
+  >
+  _controller = StreamController.broadcast();
+
+  Stream<({String label, double prob, bool helmetDetected, double helmetConf})>
+  get stream => _controller.stream;
 
   // Max inference rate (frames per second)
   final int maxFps;
 
   VideoStreamerService({
     required this.camera,
-    required this.model,
+    required this.helmetPoseModel,
+    required this.helmetDetector,
     this.maxFps = 8,
   });
 
@@ -62,13 +69,18 @@ class VideoStreamerService {
 
       try {
         // Pack planes + metadata for isolate
-        final message = packForIsolate(imgNow, model);
+        final message = packForIsolate(imgNow, helmetPoseModel, helmetDetector);
         // Do all heavy work off the UI isolate
         final res =
-            await compute<Map<String, dynamic>, ({String label, double prob})>(
-              preprocessIsolate,
-              message,
-            );
+            await compute<
+              Map<String, dynamic>,
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(prepAndInferIsolate, message);
 
         // Emit the result to listeners if stream is still open
         if (!_controller.isClosed) _controller.add(res);

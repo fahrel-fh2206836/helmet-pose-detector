@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/enum/common_enums.dart';
+import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:helmet_detector_app/services/video_streamer_service.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
@@ -23,9 +24,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   CameraController? _camController;
 
   // TFLite model wrapper and streaming classifier
-  HelmetPose? _model;
+  HelmetPose? _helmetPoseModel;
+  HelmetDetector? _helmetDet;
   VideoStreamerService? _streamer;
-  StreamSubscription<({String label, double prob})>? _modelSub;
+  StreamSubscription<
+    ({String label, double prob, bool helmetDetected, double helmetConf})
+  >?
+  _modelsSub;
 
   // UI status (e.g., "tracking") and last model output
   String _status = 'not_tracking';
@@ -50,7 +55,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final _noti = NotiService();
 
   // Detection policy thresholds (model confidence, ignore slow speeds, cooldown between alerts).
-  static const double _probThreshold = 0.5;
   static const double _minSpeedForAlert = 5.0;
   static const Duration _cooldown = Duration(seconds: 10);
 
@@ -59,6 +63,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Duration _requiredHold = const Duration(
     seconds: 6,
   ); // dynamic time based on speed
+
+  bool showHelmDetWarning = false;
 
   // Permission flags
   bool hasCameraPermission = false;
@@ -126,28 +132,44 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _camController!.initialize();
 
       // Load your model
-      _model = await HelmetPose.load(
-        assetPath: 'assets/ghostnet_100_fp32io_fp16.tflite',
+      _helmetPoseModel = await HelmetPose.load(
+        assetPath: 'assets/mobilenetv2_100_full_int8.tflite',
+        threads: 4,
+      );
+
+      _helmetDet = await HelmetDetector.load(
+        assetPath: 'assets/yolo11n_full_int8_320.tflite',
         threads: 4,
       );
 
       // Streamer: pulls frames, preprocesses on isolate, runs model
       _streamer = VideoStreamerService(
         camera: _camController!,
-        model: _model!,
+        helmetPoseModel: _helmetPoseModel!,
+        helmetDetector: _helmetDet!,
         maxFps: 10, // tune per device
       );
 
       // Subscribe to (label, prob)
-      _modelSub = _streamer!.stream.listen((res) async {
+      _modelsSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
 
         // 2) Alert policy
         final now = DateTime.now();
         final speed = _kmhCurrent; // from SpeedService
 
+        if (!res.helmetDetected) {
+          _lookingSince = null; // no helmet => break streak immediately
+          showHelmDetWarning = true;
+          return;
+        }
+
+        if (showHelmDetWarning) {
+          showHelmDetWarning = false;
+        }
+
         final bool isLooking =
-            (res.label == 'looking') && (res.prob >= _probThreshold);
+            res.helmetDetected && (res.label == 'looking') && (res.prob >= 0.5);
 
         // Skip alerts entirely when speed < 5 km/h (but UI already updated above)
         if (speed < _minSpeedForAlert) {
@@ -229,10 +251,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _speed.dispose();
     _srcSub?.cancel();
     _statSub?.cancel();
-    _modelSub?.cancel();
+    _modelsSub?.cancel();
     _streamer?.dispose();
     _camController?.dispose();
-    _model?.close();
+    _helmetPoseModel?.close();
+    _helmetDet?.close();
     super.dispose();
   }
 
@@ -281,7 +304,40 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               child: LiveCameraView(controller: _camController!),
             ),
             const SizedBox(height: 15),
-            StreamBuilder<({String label, double prob})>(
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const IconWithText(
+                    iconData: Icons.shield_outlined,
+                    text: "Helmet Detected: —",
+                  );
+                }
+
+                final isHelmetDetected = snapshot.data!.helmetDetected;
+
+                return IconWithText(
+                  iconData: Icons.shield_outlined,
+                  text: "Helmet Detected: ${isHelmetDetected ? "Yes" : "No"}",
+                );
+              },
+            ),
+            const SizedBox(height: 15),
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
               stream: _streamer?.stream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
@@ -385,7 +441,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildModelData() {
-    return StreamBuilder<({String label, double prob})>(
+    return StreamBuilder<
+      ({String label, double prob, bool helmetDetected, double helmetConf})
+    >(
       stream: _streamer?.stream,
       builder: (context, snapshot) {
         final hasData = snapshot.hasData && snapshot.data != null;
@@ -393,11 +451,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final prob = hasData
             ? (snapshot.data!.prob * 100).toStringAsFixed(1)
             : "-";
+        final isHelmetDetected = hasData ? snapshot.data!.helmetDetected : "-";
+        final helmetConf = hasData
+            ? (snapshot.data!.helmetConf * 100).toStringAsFixed(1)
+            : "-";
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text('Last Output: $label ($prob%)'),
+            Text('Last Detector Output: $isHelmetDetected ($helmetConf%)'),
+            Text('Last Classifier Output: $label ($prob%)'),
             Text('Status: $_status'),
           ],
         );
