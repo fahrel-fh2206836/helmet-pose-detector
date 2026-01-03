@@ -64,6 +64,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     seconds: 6,
   ); // dynamic time based on speed
 
+  bool showHelmDetWarning = false;
+
   // Permission flags
   bool hasCameraPermission = false;
   bool hasNotiPermission = false;
@@ -158,7 +160,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
         if (!res.helmetDetected) {
           _lookingSince = null; // no helmet => break streak immediately
+          showHelmDetWarning = true;
           return;
+        }
+
+        if (showHelmDetWarning) {
+          showHelmDetWarning = false;
         }
 
         final bool isLooking =
@@ -295,6 +302,32 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               height: MediaQuery.of(context).size.height * .5,
               width: MediaQuery.of(context).size.width * 1,
               child: LiveCameraView(controller: _camController!),
+            ),
+            const SizedBox(height: 15),
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const IconWithText(
+                    iconData: Icons.shield_outlined,
+                    text: "Helmet Detected: —",
+                  );
+                }
+
+                final isHelmetDetected = snapshot.data!.helmetDetected;
+
+                return IconWithText(
+                  iconData: Icons.shield_outlined,
+                  text: "Helmet Detected: ${isHelmetDetected ? "Yes" : "No"}",
+                );
+              },
             ),
             const SizedBox(height: 15),
             StreamBuilder<
