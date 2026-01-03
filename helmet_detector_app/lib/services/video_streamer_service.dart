@@ -80,7 +80,7 @@ class VideoStreamerService {
                 bool helmetDetected,
                 double helmetConf,
               })
-            >(preprocessAndInferenceIsolate, message);
+            >(prepAndInferIsolate, message);
 
         // Emit the result to listeners if stream is still open
         if (!_controller.isClosed) _controller.add(res);

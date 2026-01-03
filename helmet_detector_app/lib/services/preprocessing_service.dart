@@ -58,7 +58,7 @@ Returns `Object inputNested`:
 - NHWC: [ HxW x [r,g,b] ]   
 */
 Future<({String label, double prob, bool helmetDetected, double helmetConf})>
-preprocessAndInferenceIsolate(Map<String, dynamic> msg) async {
+prepAndInferIsolate(Map<String, dynamic> msg) async {
   // Unpack metadata
   final int srcW = msg['w'];
   final int srcH = msg['h'];
