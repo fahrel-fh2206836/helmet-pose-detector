@@ -64,8 +64,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     seconds: 6,
   ); // dynamic time based on speed
 
-  bool showHelmDetWarning = false;
-
   // Permission flags
   bool hasCameraPermission = false;
   bool hasNotiPermission = false;
@@ -160,12 +158,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
         if (!res.helmetDetected) {
           _lookingSince = null; // no helmet => break streak immediately
-          showHelmDetWarning = true;
           return;
-        }
-
-        if (showHelmDetWarning) {
-          showHelmDetWarning = false;
         }
 
         final bool isLooking =
@@ -296,7 +289,35 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildPermissionText(),
+            // _buildPermissionText(),
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Text("Error: No stream helmet detector data");
+                }
+                if (!snapshot.data!.helmetDetected) {
+                  return IconWithText(
+                    iconData: Icons.warning_amber,
+                    text: "Helmet not detected! Please wear a helmet!",
+                    textColor: Colors.red,
+                    iconColor: Colors.red,
+                  );
+                }
+                return IconWithText(
+                  iconData: Icons.check,
+                  text: "Helmet detected",
+                  textColor: Colors.green,
+                );
+              },
+            ),
             const SizedBox(height: 15),
             SizedBox(
               height: MediaQuery.of(context).size.height * .5,
@@ -315,7 +336,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               stream: _streamer?.stream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const IconWithText(
+                  return IconWithText(
                     iconData: Icons.shield_outlined,
                     text: "Helmet Detected: —",
                   );
@@ -341,7 +362,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               stream: _streamer?.stream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const IconWithText(
+                  return IconWithText(
                     iconData: Icons.phone_android,
                     text: "Looking at Phone: —",
                   );
