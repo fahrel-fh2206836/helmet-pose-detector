@@ -111,14 +111,14 @@ prepAndInferIsolate(Map<String, dynamic> msg) async {
   final detRes = det.runDetection(rgb, confThres: .7);
 
   // If no helmet → skip pose inference (saves time)
-  if (!detRes.helmetDetected) {
-    return (
-      label: '-',
-      prob: 0.0,
-      helmetDetected: false,
-      helmetConf: detRes.helmetConf,
-    );
-  }
+  // if (!detRes.helmetDetected) {
+  //   return (
+  //     label: '-',
+  //     prob: 0.0,
+  //     helmetDetected: false,
+  //     helmetConf: detRes.helmetConf,
+  //   );
+  // }
 
   final img.Image im;
   im = img.copyResize(rgb, width: width, height: height);

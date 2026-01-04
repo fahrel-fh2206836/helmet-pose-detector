@@ -66,7 +66,7 @@ Future<void> stopAndExport() async {
   logger.stop();
 
   final ts = DateTime.now().millisecondsSinceEpoch;
-  final file = await logger.saveCsv(fileName: "pipeline_latency_$ts.csv");
+  final file = await logger.saveCsv(fileName: "pipeline_latency_S24+_$ts.csv");
 
   // print path (useful for sanity)
   // ignore: avoid_print
