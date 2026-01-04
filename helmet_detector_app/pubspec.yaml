@@ -68,6 +68,7 @@ flutter:
   assets:
     - assets/mobilenetv2_100_full_int8.tflite
     - assets/yolo11n_full_int8_320.tflite
+    - assets/best_full_integer_quant.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

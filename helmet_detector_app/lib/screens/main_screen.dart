@@ -136,7 +136,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       );
 
       _helmetDet = await HelmetDetector.load(
-        assetPath: 'assets/yolo11n_full_int8_320.tflite',
+        assetPath: 'assets/best_full_integer_quant.tflite',
         threads: 4,
       );
 
@@ -309,12 +309,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     text: "Helmet not detected! Please wear a helmet!",
                     textColor: Colors.red,
                     iconColor: Colors.red,
+                    fontSize: 12,
                   );
                 }
                 return IconWithText(
                   iconData: Icons.check,
-                  text: "Helmet detected",
+                  text:
+                      "Helmet detected. Infering frame for mobile distraction...",
                   textColor: Colors.green,
+                  fontSize: 12,
                 );
               },
             ),
