@@ -98,7 +98,7 @@ class SpeedService {
         );
 
     // Subscribe to accelerometer (IMU) stream
-    // _accelSub ??= accelerometerEventStream().listen(_onAccel, onError: (_) {});
+    _accelSub ??= accelerometerEventStream().listen(_onAccel, onError: (_) {});
 
     // Emit an initial value so UI can render immediately
     _emit(0.0, SpeedSource.unknown);
@@ -172,8 +172,8 @@ class SpeedService {
     if (kmh.abs() < minValidKmh) kmh = 0.0;
 
     // Reset IMU estimate on fresh GPS fix
-    // _imuKmhEstimate = kmh;
-    // _imuStart = DateTime.now();
+    _imuKmhEstimate = kmh;
+    _imuStart = DateTime.now();
 
     // Smooth (window avg + EMA) and emit
     final smoothed = _smooth(kmh);
