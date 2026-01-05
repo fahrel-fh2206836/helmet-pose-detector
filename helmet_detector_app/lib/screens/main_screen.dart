@@ -94,6 +94,46 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return const Duration(seconds: 6); // between 5 and <15
   }
 
+  // ---- Tracking session timer ----
+  final Stopwatch _trackingWatch = Stopwatch();
+  Timer? _trackingUiTimer;
+  Duration _trackingElapsed = Duration.zero;
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:'
+          '${m.toString().padLeft(2, '0')}:'
+          '${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  void _startTrackingTimer({bool reset = false}) {
+    if (reset) {
+      _trackingWatch.reset();
+      _trackingElapsed = Duration.zero;
+    }
+    _trackingWatch.start();
+
+    _trackingUiTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _trackingElapsed = _trackingWatch.elapsed);
+    });
+  }
+
+  void _stopTrackingTimer() {
+    _trackingWatch.stop();
+    _trackingUiTimer?.cancel();
+    _trackingUiTimer = null;
+
+    if (mounted) {
+      setState(() => _trackingElapsed = _trackingWatch.elapsed);
+    }
+  }
+
   // camera + model + subscriptions
   Future<void> _bootstrap() async {
     // listeners to speed streams
@@ -213,6 +253,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _speed.stop();
       _streamer?.stop();
       cam.pausePreview();
+      if (_isServiceRunning) _stopTrackingTimer(); // NEW
     } else if (state == AppLifecycleState.resumed) {
       _speed.start();
       cam.resumePreview();
@@ -225,12 +266,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isServiceRunning) {
       _streamer?.start();
       _speed.start();
+      _startTrackingTimer(reset: true); // NEW: reset+start on activation
       setState(() {
         _status = "tracking";
       });
     } else {
       _streamer?.stop();
       _speed.stop();
+      _stopTrackingTimer(); // NEW: stop on deactivation
       setState(() {
         _status = "not_tracking";
       });
@@ -249,6 +292,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _camController?.dispose();
     _helmetPoseModel?.close();
     _helmetDet?.close();
+    _trackingUiTimer?.cancel();
     super.dispose();
   }
 
@@ -421,6 +465,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               title: Text('Technical Data'),
               subtitle: Text('Tap to expand debugs'),
               children: [
+                IconWithText(
+                  iconData: Icons.timer_outlined,
+                  text: 'Tracking Time: ${_fmt(_trackingElapsed)}',
+                ),
+                const SizedBox(height: 8),
                 Text("Model Result & Status"),
                 Container(
                   padding: EdgeInsets.all(10),
