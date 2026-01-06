@@ -51,7 +51,7 @@ The app features:
 - **Platform**: Android (iOS support future releases)
 - **Flutter**: SDK ^3.8.0
 - **Permissions**: Camera, Location, Notifications
-- **Hardware**: Front-facing camera, GPS capability
+- **Hardware**: Front-facing camera, GPS capability, IMU sensors
 
 ## 🚀 Getting Started
 
@@ -78,7 +78,7 @@ The app features:
 
 3. **Add model files**
 
-   - Ensure `helmet_pose_fp16.tflite` is in `assets/` folder
+   - Ensure `mobilenetv2_100_full_int8.tflite` is in `assets/` folder
    - Optional: Add other model variants for testing
 
 4. **Run the app**
@@ -97,7 +97,7 @@ The app features:
 
 ### Model Selection
 
-The app uses `helmet_pose_fp16.tflite` by default. To use a different model:
+The app uses `mobilenetv2_100_full_int8.tflite` by default. To use a different model:
 
 ```dart
 _model = await HelmetPose.load(
@@ -124,7 +124,8 @@ lib/
 │   ├── helmet_video_classifier.dart  # Camera stream and AI processing
 │   ├── speed_services.dart           # GPS/accelerometer speed tracking
 │   ├── permission_service.dart       # Permission management
-│   └── noti_service.dart            # Local notifications
+│   ├── noti_service.dart             # Local notifications
+|   └── preprocessing_service.dart    # Preprocessing done in isolate
 └── widgets/
     ├── icon_with_text.dart           # Reusable UI components
     └── live_camera_preview.dart     # Camera preview widget

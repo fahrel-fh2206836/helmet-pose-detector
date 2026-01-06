@@ -1,7 +1,7 @@
 # ⛑️ Helmet Pose Detector (Looking vs. Not Looking)
 
 A lightweight computer-vision project that detects whether a helmeted rider is **looking at a phone** (_looking_) or **not** (_not looking_) to help identify and alert for the purpose of reducing mobile distractions.  
-The classifier is a **CNN** fine-tuned via **transfer learning (EfficientNet-B3)** and runs in real time with a simple **OpenCV** UI as well as **Mobile** app.
+The classifier is a **CNN** fine-tuned via **transfer learning (EfficientNet-B3 and MobileNetV2-100)** and runs in real time with a simple **OpenCV** UI as well as **Mobile** app.
 
 ## 🔜 Coming Soon!
 🔙 **Background Operation**: In future releases, the app’s detection logic will run seamlessly in the background, allowing continuous monitoring even while the user is using other apps — a more practical setup for real on-road driving scenarios.
@@ -16,7 +16,7 @@ The classifier is a **CNN** fine-tuned via **transfer learning (EfficientNet-B3)
 
 - **Binary attention classification:** _looking_ vs. _not looking_
 - **Real-time feedback:** OpenCV window overlay for live camera/video
-- **Transfer learning:** EfficientNet-B3 fine-tuned on **1,800+ images** (roughly balanced)
+- **Transfer learning:** EfficientNet-B3 and MobileNetV2-100 fine-tuned on **1,800+ images** (roughly balanced)
 - **Mobile app:** Version 1 of the companion mobile application has been fully developed, extending the system’s functionality to smartphones for seamless on-road use. 🆕
 
 ## Git Clone Repository
@@ -107,7 +107,7 @@ Make sure a device is connected and recognized by `flutter devices`.
 ## 🎯 Project Goal & Approach
 
 - **Goal:** Detect rider distraction by classifying whether a helmeted user is looking at a phone.
-- **Model:** EfficientNet-B3 (pre-trained) fine-tuned with **PyTorch**.
+- **Model:** EfficientNet-B3 and MobileNetV2-100 (pre-trained) fine-tuned with **PyTorch**.
 - **Data:** ~**1,800** labeled images, roughly half _looking_ and half _not looking_.
 - **UI:** Simple **OpenCV** interface for real-time visualization.
 - **Mobile app:** Development successfully completed, the model has been fully deployed on smartphones, ensuring broader accessibility and real-world usability. 🆕
