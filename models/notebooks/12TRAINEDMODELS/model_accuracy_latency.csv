@@ -1,6 +1,0 @@
-﻿model_name,avg_inference_time,val_accuracy
-EfficientNet-B2,94.88,94.63
-GhostNet-100,29.82,94.63
-RegNetY-008,38.98,94.63
-MobileNetV2-100,24.88,95.19
-MobileNetV2-140,30.23,95
