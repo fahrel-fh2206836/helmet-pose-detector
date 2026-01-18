@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:helmet_detector_app/enum/common_enums.dart';
+import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:helmet_detector_app/services/video_streamer_service.dart';
 import 'package:helmet_detector_app/services/noti_service.dart';
@@ -23,9 +24,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   CameraController? _camController;
 
   // TFLite model wrapper and streaming classifier
-  HelmetPose? _model;
+  HelmetPose? _helmetPoseModel;
+  HelmetDetector? _helmetDet;
   VideoStreamerService? _streamer;
-  StreamSubscription<({String label, double prob})>? _modelSub;
+  StreamSubscription<
+    ({String label, double prob, bool helmetDetected, double helmetConf})
+  >?
+  _modelsSub;
 
   // UI status (e.g., "tracking") and last model output
   String _status = 'not_tracking';
@@ -50,7 +55,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final _noti = NotiService();
 
   // Detection policy thresholds (model confidence, ignore slow speeds, cooldown between alerts).
-  static const double _probThreshold = 0.5;
   static const double _minSpeedForAlert = 5.0;
   static const Duration _cooldown = Duration(seconds: 10);
 
@@ -90,6 +94,46 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return const Duration(seconds: 6); // between 5 and <15
   }
 
+  // ---- Tracking session timer ----
+  final Stopwatch _trackingWatch = Stopwatch();
+  Timer? _trackingUiTimer;
+  Duration _trackingElapsed = Duration.zero;
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:'
+          '${m.toString().padLeft(2, '0')}:'
+          '${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  void _startTrackingTimer({bool reset = false}) {
+    if (reset) {
+      _trackingWatch.reset();
+      _trackingElapsed = Duration.zero;
+    }
+    _trackingWatch.start();
+
+    _trackingUiTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _trackingElapsed = _trackingWatch.elapsed);
+    });
+  }
+
+  void _stopTrackingTimer() {
+    _trackingWatch.stop();
+    _trackingUiTimer?.cancel();
+    _trackingUiTimer = null;
+
+    if (mounted) {
+      setState(() => _trackingElapsed = _trackingWatch.elapsed);
+    }
+  }
+
   // camera + model + subscriptions
   Future<void> _bootstrap() async {
     // listeners to speed streams
@@ -126,28 +170,39 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       await _camController!.initialize();
 
       // Load your model
-      _model = await HelmetPose.load(
-        assetPath: 'assets/ghostnet_100_full_int8.tflite',
+      _helmetPoseModel = await HelmetPose.load(
+        assetPath: 'assets/mobilenetv2_100_full_int8.tflite',
+        threads: 4,
+      );
+
+      _helmetDet = await HelmetDetector.load(
+        assetPath: 'assets/best_full_integer_quant.tflite',
         threads: 4,
       );
 
       // Streamer: pulls frames, preprocesses on isolate, runs model
       _streamer = VideoStreamerService(
         camera: _camController!,
-        model: _model!,
-        maxFps: 5, // tune per device
+        helmetPoseModel: _helmetPoseModel!,
+        helmetDetector: _helmetDet!,
+        maxFps: 10, // tune per device
       );
 
       // Subscribe to (label, prob)
-      _modelSub = _streamer!.stream.listen((res) async {
+      _modelsSub = _streamer!.stream.listen((res) async {
         if (!mounted) return;
 
         // 2) Alert policy
         final now = DateTime.now();
         final speed = _kmhCurrent; // from SpeedService
 
+        if (!res.helmetDetected) {
+          _lookingSince = null; // no helmet => break streak immediately
+          return;
+        }
+
         final bool isLooking =
-            (res.label == 'looking') && (res.prob >= _probThreshold);
+            res.helmetDetected && (res.label == 'looking') && (res.prob >= 0.5);
 
         // Skip alerts entirely when speed < 5 km/h (but UI already updated above)
         if (speed < _minSpeedForAlert) {
@@ -198,6 +253,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _speed.stop();
       _streamer?.stop();
       cam.pausePreview();
+      if (_isServiceRunning) _stopTrackingTimer(); // NEW
     } else if (state == AppLifecycleState.resumed) {
       _speed.start();
       cam.resumePreview();
@@ -210,12 +266,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (_isServiceRunning) {
       _streamer?.start();
       _speed.start();
+      _startTrackingTimer(reset: true); // NEW: reset+start on activation
       setState(() {
         _status = "tracking";
       });
     } else {
       _streamer?.stop();
       _speed.stop();
+      _stopTrackingTimer(); // NEW: stop on deactivation
       setState(() {
         _status = "not_tracking";
       });
@@ -229,10 +287,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _speed.dispose();
     _srcSub?.cancel();
     _statSub?.cancel();
-    _modelSub?.cancel();
+    _modelsSub?.cancel();
     _streamer?.dispose();
     _camController?.dispose();
-    _model?.close();
+    _helmetPoseModel?.close();
+    _helmetDet?.close();
+    _trackingUiTimer?.cancel();
     super.dispose();
   }
 
@@ -273,7 +333,38 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildPermissionText(),
+            // _buildPermissionText(),
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Text("Error: No stream helmet detector data");
+                }
+                if (!snapshot.data!.helmetDetected) {
+                  return IconWithText(
+                    iconData: Icons.warning_amber,
+                    text: "Helmet not detected! Please wear a helmet!",
+                    textColor: Colors.red,
+                    iconColor: Colors.red,
+                    fontSize: 12,
+                  );
+                }
+                return IconWithText(
+                  iconData: Icons.check,
+                  text:
+                      "Helmet detected. Infering frame for mobile distraction...",
+                  textColor: Colors.green,
+                  fontSize: 12,
+                );
+              },
+            ),
             const SizedBox(height: 15),
             SizedBox(
               height: MediaQuery.of(context).size.height * .5,
@@ -281,11 +372,44 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               child: LiveCameraView(controller: _camController!),
             ),
             const SizedBox(height: 15),
-            StreamBuilder<({String label, double prob})>(
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
               stream: _streamer?.stream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const IconWithText(
+                  return IconWithText(
+                    iconData: Icons.shield_outlined,
+                    text: "Helmet Detected: —",
+                  );
+                }
+
+                final isHelmetDetected = snapshot.data!.helmetDetected;
+
+                return IconWithText(
+                  iconData: Icons.shield_outlined,
+                  text: "Helmet Detected: ${isHelmetDetected ? "Yes" : "No"}",
+                );
+              },
+            ),
+            const SizedBox(height: 15),
+            StreamBuilder<
+              ({
+                String label,
+                double prob,
+                bool helmetDetected,
+                double helmetConf,
+              })
+            >(
+              stream: _streamer?.stream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return IconWithText(
                     iconData: Icons.phone_android,
                     text: "Looking at Phone: —",
                   );
@@ -341,6 +465,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               title: Text('Technical Data'),
               subtitle: Text('Tap to expand debugs'),
               children: [
+                IconWithText(
+                  iconData: Icons.timer_outlined,
+                  text: 'Tracking Time: ${_fmt(_trackingElapsed)}',
+                ),
+                const SizedBox(height: 8),
                 Text("Model Result & Status"),
                 Container(
                   padding: EdgeInsets.all(10),
@@ -385,7 +514,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildModelData() {
-    return StreamBuilder<({String label, double prob})>(
+    return StreamBuilder<
+      ({String label, double prob, bool helmetDetected, double helmetConf})
+    >(
       stream: _streamer?.stream,
       builder: (context, snapshot) {
         final hasData = snapshot.hasData && snapshot.data != null;
@@ -393,11 +524,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final prob = hasData
             ? (snapshot.data!.prob * 100).toStringAsFixed(1)
             : "-";
+        final isHelmetDetected = hasData ? snapshot.data!.helmetDetected : "-";
+        final helmetConf = hasData
+            ? (snapshot.data!.helmetConf * 100).toStringAsFixed(1)
+            : "-";
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text('Last Output: $label ($prob%)'),
+            Text('Last Detector Output: $isHelmetDetected ($helmetConf%)'),
+            Text('Last Classifier Output: $label ($prob%)'),
             Text('Status: $_status'),
           ],
         );

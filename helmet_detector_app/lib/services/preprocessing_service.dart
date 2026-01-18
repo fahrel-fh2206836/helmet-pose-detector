@@ -6,10 +6,15 @@ strides, and layout flags. Uses TransferableTypedData for zero-copy transfer.
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:helmet_detector_app/models/helmet_detector.dart';
 import 'package:helmet_detector_app/models/helmet_pose.dart';
 import 'package:image/image.dart' as img;
 
-Map<String, dynamic> packForIsolate(CameraImage image, HelmetPose model) {
+Map<String, dynamic> packForIsolate(
+  CameraImage image,
+  HelmetPose pose,
+  HelmetDetector det,
+) {
   final w = image.width;
   final h = image.height;
 
@@ -39,7 +44,8 @@ Map<String, dynamic> packForIsolate(CameraImage image, HelmetPose model) {
     'yLen': y.length, // split points inside `all`
     'uLen': u.length,
     'buffer': ttd, // transferred bytes
-    'model': model,
+    'pose': pose,
+    'det': det,
   };
 }
 
@@ -51,9 +57,8 @@ Returns `Object inputNested`:
 - NCHW: [[c0(HxW), c1(HxW), c2(HxW)]]    // shape [1,3,300,300]
 - NHWC: [ HxW x [r,g,b] ]   
 */
-Future<({String label, double prob})> preprocessIsolate(
-  Map<String, dynamic> msg,
-) async {
+Future<({String label, double prob, bool helmetDetected, double helmetConf})>
+prepAndInferIsolate(Map<String, dynamic> msg) async {
   // Unpack metadata
   final int srcW = msg['w'];
   final int srcH = msg['h'];
@@ -65,12 +70,13 @@ Future<({String label, double prob})> preprocessIsolate(
   final int yLen = msg['yLen'];
   final int uLen = msg['uLen'];
   final TransferableTypedData ttd = msg['buffer'] as TransferableTypedData;
-  final HelmetPose model = msg['model'];
+  final HelmetPose pose = msg['pose'];
+  final HelmetDetector det = msg['det'];
 
   // Read model input layout only once (controls how we pack tensors)
-  final isNCHW = model.isNCHW;
-  final height = model.modelHeight;
-  final width = model.modelWidth;
+  final isNCHW = pose.isNCHW;
+  final height = pose.modelHeight;
+  final width = pose.modelWidth;
 
   // Recover concatenated YUV bytes and split them
   final Uint8List all = ttd.materialize().asUint8List();
@@ -102,19 +108,23 @@ Future<({String label, double prob})> preprocessIsolate(
     }
   }
 
+  //  YOLO helmet detect FIRST
+  final detRes = det.runDetection(rgb, confThres: .7);
+
+  // If no helmet → skip pose inference (saves time)
+  if (!detRes.helmetDetected) {
+    return (
+      label: '-',
+      prob: 0.0,
+      helmetDetected: false,
+      helmetConf: detRes.helmetConf,
+    );
+  }
+
   final img.Image im;
-  // if (height == 300 && width == 300) {
-  //   // 2) resize to 320
-  //   var im320 = img.copyResize(rgb, width: 320, height: 320);
-
-  //   // 3) center-crop to 300x300 (same as your predict() path)
-  //   final off = (320 - height) >> 1;
-  //   im = img.copyCrop(im320, x: off, y: off, width: width, height: height);
-  // } else {
   im = img.copyResize(rgb, width: width, height: height);
-  // }
 
-  // 4) normalize with PyTorch mean/std and build nested list to match layout
+  // normalize with PyTorch mean/std and build nested list to match layout
   const mean = [0.485, 0.456, 0.406];
   const std = [0.229, 0.224, 0.225];
 
@@ -183,5 +193,12 @@ Future<({String label, double prob})> preprocessIsolate(
   }
 
   // Direct run on tensor (no decode/encode)
-  return await model.runInference(inputNested);
+  final poseRes = await pose.runInference(inputNested);
+
+  return (
+    label: poseRes.label,
+    prob: poseRes.prob,
+    helmetDetected: detRes.helmetDetected,
+    helmetConf: detRes.helmetConf,
+  );
 }
