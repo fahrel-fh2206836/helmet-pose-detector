@@ -15,8 +15,9 @@ The classifier is a **CNN** fine-tuned via **transfer learning (EfficientNet-B3 
 ## ✨ Features
 
 - **Binary attention classification:** _looking_ vs. _not looking_
+- **Object detection:** [_helmet_, _no_helmet_]
 - **Real-time feedback:** OpenCV window overlay for live camera/video
-- **Transfer learning:** EfficientNet-B3 and MobileNetV2-100 fine-tuned on **1,800+ images** (roughly balanced)
+- **Transfer learning:** YOLO11n, EfficientNet-B3 and MobileNetV2-100 fine-tuned on **2000+ images** (roughly balanced)
 - **Mobile app:** Version 1 of the companion mobile application has been fully developed, extending the system’s functionality to smartphones for seamless on-road use. 🆕
 
 ## Git Clone Repository
@@ -107,14 +108,14 @@ Make sure a device is connected and recognized by `flutter devices`.
 ## 🎯 Project Goal & Approach
 
 - **Goal:** Detect rider distraction by classifying whether a helmeted user is looking at a phone.
-- **Model:** EfficientNet-B3 and MobileNetV2-100 (pre-trained) fine-tuned with **PyTorch**.
-- **Data:** ~**1,800** labeled images, roughly half _looking_ and half _not looking_.
+- **Model:** EfficientNet-B3 and MobileNetV2-100 (pre-trained) fine-tuned with **PyTorch** and YOLO11n using **Ultralytics**.
+- **Data:** ~**1,800** labeled images, roughly half _looking_ and half _not looking_ and **2000+** for helmet detection.
 - **UI:** Simple **OpenCV** interface for real-time visualization.
-- **Mobile app:** Development successfully completed, the model has been fully deployed on smartphones, ensuring broader accessibility and real-world usability. 🆕
+- **Mobile app:** Development successfully completed, the models has been fully deployed on smartphones, ensuring broader accessibility and real-world usability. 🆕
 
 ## 🚨 Safety Notice
 
-This app is designed to promote safer riding practices but should not be relied upon as the sole safety measure. Always:
+This app is designed to promote safer riding practices. However, user testing has not been conducted to conclude its reliability as such it should not be relied upon as the sole safety measure. Always:
 
 - Keep your eyes on the road
 - Use hands-free communication devices
@@ -131,7 +132,10 @@ This project’s training and fine-tuning process utilized the following publicl
 - [Bykea Helmet Dataset (Roboflow)](https://universe.roboflow.com/samsun-vwq9u/bykea)  
 - [Helmet Detection Dataset (Roboflow)](https://universe.roboflow.com/myspace-60grk/helmet-jmvny)  
 - [Motorcycle Helmet Dataset (Mendeley Data)](https://data.mendeley.com/datasets/bmy35m25pw/1)  
-- [Safety Helmet Detection Dataset (Mendeley Data)](https://data.mendeley.com/datasets/tm72fkfxd5/3)  
+- [Safety Helmet Detection Dataset (Mendeley Data)](https://data.mendeley.com/datasets/tm72fkfxd5/3)
+- [Motorcycle helmet Computer Vision Model by Innovatech](https://universe.roboflow.com/innovatech/motorcycle-helmet-q0wmd)
+- [Selfie-Image-Detection-Dataset](https://www.kaggle.com/datasets/jigrubhatt/selfieimagedetectiondataset)
+
 
 > All datasets are credited to their respective authors and are used solely for research and educational purposes.
 

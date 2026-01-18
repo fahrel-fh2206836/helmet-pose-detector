@@ -1,22 +1,21 @@
 # RideSafe - Helmet Pose Detection App
 
-A Flutter mobile application that uses AI-powered computer vision to detect when motorcycle riders are looking at their phones while riding. The app provides real-time alerts to promote safer riding practices.
+A Flutter mobile application that uses AI-powered computer vision to detect when **helmet-wearing** motorcycle riders are looking at their phones while riding. The app provides real-time alerts to promote safer riding practices.
 
 ## 🚀 Features
 
-- **Real-time Helmet Pose Detection**: Uses TensorFlow Lite models to analyze camera feed and detect if rider is looking at phone
-- **Speed-based Alert System**: Adjusts alert timing based on current riding speed
-- **GPS Speed Tracking**: Monitors riding speed using GPS and accelerometer data
-- **Smart Notifications**: Sends alerts only when appropriate (speed > 5 km/h, sustained detection)
-- **Live Camera Preview**: Real-time camera feed with detection overlay
-- **Permission Management**: Handles camera, location, and notification permissions
+- **Real-time Helmet Detection and Pose Classification**: Uses TensorFlow Lite models to analyze camera feed and detect if rider is wearing helmet && looking at phone.
+- **Speed-based Alert System**: Adjusts alert timing based on current riding speed.
+- **GPS Speed Tracking**: Monitors riding speed using GPS and accelerometer data.
+- **Smart Notifications**: Sends alerts only when appropriate (speed > 5 km/h, sustained detection).
+- **Permission Management**: Handles camera, location, and notification permissions.
 - **Background Processing**: Heavy AI processing runs on background threads to maintain smooth UI
 
 ## 📱 Mobile Interactions and Logics
 
 The app features:
 
-- Live camera preview showing detection status
+- Live camera preview
 - Real-time speed display
 - Phone detection status indicator
 - Service activation/deactivation toggle
@@ -24,20 +23,26 @@ The app features:
 
 ## 🛠️ Technical Details
 
-### Used AI Model
+### Classification AI Model
 
-- **Model Type**: TensorFlow Lite (TFLite) model for pose classification
-- **Input**: 300x300 RGB images
+- **Model Type**: MobileNetV2-100 (TFLite)
+- **Input**: 224x224 RGB images
 - **Classes**: "looking" vs "not_looking"
-- **Preprocessing**: YUV420 → RGB conversion, resize to 320x320, center crop to 300x300, PyTorch normalization
-- **Inference**: Runs on background isolate threads for performance
+- **Preprocessing**: YUV420 → RGB conversion, resize to 224x224 and PyTorch normalization.
+
+### Detection AI Model
+
+- **Model Type**: YOLO11n (TFLite)
+- **Input**: 320x320 RGB images
+- **Classes**: "helmet" vs "no_helmet"
+- **Preprocessing**: YUV420 → RGB conversion, resize to 320x320.
 
 ### Performance Optimizations
 
 - **Background Processing**: Heavy preprocessing runs on separate isolates
 - **Rate Limiting**: Configurable FPS limit (default: 8 FPS)
 - **Memory Management**: Efficient YUV420 to RGB conversion with zero-copy transfers
-- **NNAPI Acceleration**: Uses Android Neural Networks API when available
+- **XNNPACK Acceleration**: Uses XNNPACK delegation.
 
 ### Speed Detection
 
@@ -97,10 +102,16 @@ The app features:
 
 ### Model Selection
 
-The app uses `mobilenetv2_100_full_int8.tflite` by default. To use a different model:
+The app uses `mobilenetv2_100_full_int8.tflite` and `yolo11n_full_int8_320.tflite` by default. To use a different model:
 
 ```dart
+# In main_screen.dart
+
 _model = await HelmetPose.load(
+  assetPath: 'assets/your_model.tflite'
+);
+
+_model = await HelmetDetector.load(
   assetPath: 'assets/your_model.tflite'
 );
 ```
@@ -117,15 +128,16 @@ _model = await HelmetPose.load(
 lib/
 ├── main.dart                 # App entry point and initialization
 ├── models/
-│   └── helmet_pose.dart     # TFLite model wrapper and inference
+│   ├── helmet_pose.dart     # TFLite pose model wrapper and inference
+|   └── helmet_detector.dart # TFLite detection model wrapper and inference
 ├── screens/
 │   └── main_screen.dart     # Main UI and service coordination
 ├── services/
-│   ├── helmet_video_classifier.dart  # Camera stream and AI processing
+│   ├── video_streamer_service.dart   # Camera stream and sending data to isolate
 │   ├── speed_services.dart           # GPS/accelerometer speed tracking
 │   ├── permission_service.dart       # Permission management
 │   ├── noti_service.dart             # Local notifications
-|   └── preprocessing_service.dart    # Preprocessing done in isolate
+|   └── preprocessing_service.dart    # Preprocessing and inference done in isolate
 └── widgets/
     ├── icon_with_text.dart           # Reusable UI components
     └── live_camera_preview.dart     # Camera preview widget
@@ -135,7 +147,7 @@ lib/
 
 1. **Camera Stream**: Captures YUV420 frames from front camera
 2. **Preprocessing**: Converts to RGB, resizes, crops, and normalizes on background thread
-3. **AI Inference**: Runs TFLite model to classify pose as "looking" or "not_looking"
+3. **AI Inference**: Runs TFLite model to detect 'helmet' or 'no_helmet' and classify pose as "looking" or "not_looking"
 4. **Speed Monitoring**: Tracks GPS/accelerometer data for current speed
 5. **Alert Logic**: Sends notifications when:
    - Pose classified as "looking" with confidence > 55%
