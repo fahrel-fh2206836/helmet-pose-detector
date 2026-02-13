@@ -43,7 +43,7 @@ class SpeedService {
     this.emaAlpha = 0.6,
     this.minValidKmh = 0.3,
     this.maxAccuracyMeters = 25.0, // drop poor accuracy fixes
-    this.imuGapMax = const Duration(seconds: 5),
+    this.imuGapMax = const Duration(seconds: 7),
     this.imuGapMin = const Duration(seconds: 2),
   }) : locationSettings =
            locationSettings ??
